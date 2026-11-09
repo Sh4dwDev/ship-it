@@ -173,6 +173,16 @@ th { font-family: var(--f-label); font-size: 0.68rem; color: var(--muted); font-
 details summary { cursor: pointer; font-family: var(--f-label); font-size: 0.74rem; color: var(--muted); }
 ol.howto { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 
+.post { background: var(--panel); border: var(--px) solid var(--line); padding: 14px; display: grid; gap: 8px; min-width: 0; }
+.post.new { border-color: var(--accent); }
+.post .txt, .reply .txt { overflow-wrap: anywhere; white-space: pre-wrap; }
+.chip.tag-chat { color: var(--muted); } .chip.tag-help { color: var(--bad); } .chip.tag-showcase { color: var(--xp); } .chip.tag-playtest { color: var(--cool); }
+.thread { display: grid; gap: 8px; border-left: var(--px) solid var(--line); padding-left: 12px; margin-top: 4px; }
+.reply { display: grid; grid-template-columns: auto 1fr; gap: 8px; min-width: 0; }
+.reply .avatar { width: 26px; height: 26px; font-size: .7rem; }
+.reply .body { min-width: 0; display: grid; gap: 2px; }
+.online { display: inline-flex; align-items: center; gap: 6px; }
+.online .avatar { width: 24px; height: 24px; font-size: .68rem; }
 #toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); font-family: var(--f-label); font-size: .76rem; padding: 10px 16px; box-shadow: 4px 4px 0 var(--accent); z-index: 20; max-width: calc(100vw - 32px); }
 #fx { position: fixed; inset: 0; pointer-events: none; z-index: 15; width: 100%; height: 100%; }
 @media (prefers-reduced-motion: reduce) { .livedot { animation: none; } .btn { transition: none; } }
@@ -234,10 +244,12 @@ function badgesOf(m) {
   if (m.totalMinutes >= 600) b.push("10 Hours"); if (m.totalMinutes >= 3000) b.push("50 Hours");
   if (m.bossDone >= 1) b.push("Boss Slayer"); if (m.questsDone >= 25) b.push("Questmaster");
   const s = streakOf(m.days).streak; if (s >= 7) b.push("7-Day Streak"); if (s >= 30) b.push("30-Day Streak");
+  if ((m.helpCount || 0) >= 1) b.push("Helper"); if ((m.helpCount || 0) >= 10) b.push("Mentor");
+  if ((m.raids || 0) >= 1) b.push("Raider"); if ((m.raids || 0) >= 10) b.push("Raid Leader");
   if ((m.ships || []).length >= 1) b.push("Shipped"); if ((m.ships || []).length >= 3) b.push("Serial Shipper");
   return b;
 }
-const blankMember = () => ({ xp: 0, days: [], monthMinutes: {}, totalMinutes: 0, runs: 0, questsDone: 0, bossDone: 0, activeQuest: "", projectName: "", deadline: "", logs: [], ships: [], joinedAt: new Date().toISOString(), lastActive: "" });
+const blankMember = () => ({ xp: 0, days: [], monthMinutes: {}, totalMinutes: 0, runs: 0, questsDone: 0, bossDone: 0, activeQuest: "", projectName: "", deadline: "", logs: [], ships: [], posts: [], replies: [], joinedAt: new Date().toISOString(), lastActive: "" });
 const normMember = (d) => Object.assign(blankMember(), d || {});
 const blankBoard = () => ({ project: null, quests: [] });
 const normBoard = (d) => Object.assign(blankBoard(), d || {});
@@ -249,7 +261,7 @@ const S = {
   gate: { tab: new URLSearchParams(location.search).get("invite") ? "join" : "signin", err: "", busy: false, info: "" },
   conn: "ok", member: blankMember(), board: blankBoard(), members: {}, cheers: {}, profiles: {}, invites: [],
   settings: { announcement: "", challenge: null, goalHours: 0 }, peers: [],
-  focus: null, ui: { wiz: null, reward: null, lost: null, shipOpen: false, confirmNew: false, confirmRemove: null, newInvite: null, dur: ls.get("shipit.dur") || 25, strict: ls.get("shipit.strict") ?? true },
+  focus: null, ui: { open: {}, wiz: null, reward: null, lost: null, shipOpen: false, confirmNew: false, confirmRemove: null, newInvite: null, dur: ls.get("shipit.dur") || 25, strict: ls.get("shipit.strict") ?? true },
   sound: ls.get("shipit.sound") ?? true,
 };
 const myId = () => S.uid || "local";
@@ -301,19 +313,52 @@ function markDay() {
 }
 
 /* ---------- sound + fx ---------- */
-let actx = null;
+// Browsers only allow audio after the user has interacted with the page, and they
+// suspend it again in background tabs. So the audio engine is created on the first
+// click or key press, and resumed before every sound.
+let actx = null, master = null;
+function audio() {
+  if (actx) return actx;
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
+  actx = new AC();
+  const comp = actx.createDynamicsCompressor();
+  const lp = actx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 5200;
+  master = actx.createGain(); master.gain.value = 0.5;
+  master.connect(lp).connect(comp).connect(actx.destination);
+  return actx;
+}
+function unlockAudio() { const a = audio(); if (a && a.state !== "running") a.resume().catch(() => {}); }
+["pointerdown", "keydown", "touchstart"].forEach((ev) => addEventListener(ev, unlockAudio, { capture: true, passive: true }));
+document.addEventListener("visibilitychange", () => { if (!document.hidden && actx) unlockAudio(); });
+
+// Each sound is a list of [frequency Hz, start s, length s, wave, slideTo Hz?, volume?].
+const SFX = {
+  tap:   [[880, 0, 0.06, "triangle"]],
+  start: [[262, 0, 0.12, "square", 523], [523, 0.12, 0.18, "triangle"]],
+  quest: [[988, 0, 0.08, "square"], [1319, 0.08, 0.28, "square"]],
+  level: [[523, 0, 0.1, "square"], [659, 0.1, 0.1, "square"], [784, 0.2, 0.1, "square"], [1047, 0.3, 0.4, "square"], [131, 0, 0.7, "triangle", null, 1.4]],
+  run:   [[392, 0, 0.1, "square"], [523, 0.1, 0.1, "square"], [659, 0.2, 0.1, "square"], [784, 0.3, 0.12, "square"], [659, 0.42, 0.08, "square"], [1047, 0.5, 0.5, "square"], [196, 0, 0.5, "triangle", null, 1.4], [262, 0.5, 0.5, "triangle", null, 1.4]],
+  fail:  [[392, 0, 0.18, "square", 330], [294, 0.2, 0.4, "square", 147]],
+};
 function blip(kind) {
   if (!S.sound) return;
-  try {
-    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-    const notes = { quest: [523, 784], level: [523, 659, 784, 1047], run: [392, 523, 659, 784, 1047], fail: [330, 220], tap: [660] }[kind] || [600];
-    notes.forEach((f, i) => {
-      const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + i * 0.09;
-      o.type = "square"; o.frequency.value = f;
-      g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.13);
-    });
-  } catch {}
+  const a = audio(); if (!a) return;
+  const play = () => {
+    try {
+      const t0 = a.currentTime + 0.03;
+      for (const [f, at, len, wave, slide, vol] of SFX[kind] || SFX.tap) {
+        const o = a.createOscillator(), g = a.createGain(), t = t0 + at, peak = 0.12 * (vol || 1) * (wave === "square" ? 0.6 : 1);
+        o.type = wave; o.frequency.setValueAtTime(f, t);
+        if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + len);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(peak, t + 0.008);
+        g.gain.setValueAtTime(peak, t + Math.max(0.01, len * 0.6));
+        g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+        o.connect(g).connect(master); o.start(t); o.stop(t + len + 0.02);
+      }
+    } catch {}
+  };
+  if (a.state === "running") play(); else a.resume().then(play, () => {});
 }
 const fx = $("#fx"), fctx = fx.getContext("2d");
 let parts = [], fxRun = false;
@@ -345,18 +390,19 @@ function avatar(id) {
   let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) % 360;
   return `<span class="avatar" style="background:hsl(${h} 55% 42%)">${esc(nm(id).slice(0, 1).toUpperCase())}</span>`;
 }
+const raidMates = (raidId) => S.peers.filter((p) => p.uid && p.uid !== S.uid && p.focus && p.focus.raidId === raidId && p.focus.endsAt > Date.now()).map((p) => p.uid);
 function liveFocusers() {
   const now = Date.now(), out = {};
   for (const p of S.peers) {
     const f = p.focus;
     if (f && p.uid && typeof f.endsAt === "number" && f.endsAt > now) out[p.uid] = f;
   }
-  if (S.focus) out[myId()] = { endsAt: S.focus.endsAt, quest: questTitle(S.focus.questId), mins: S.focus.mins };
+  if (S.focus) out[myId()] = { endsAt: S.focus.endsAt, quest: questTitle(S.focus.questId), mins: S.focus.mins, raidId: S.focus.raidId, open: S.focus.open };
   return out;
 }
 
 /* ---------- routing ---------- */
-const VIEWS = ["quests", "focus", "devlog", "party", "ships", "admin"];
+const VIEWS = ["quests", "focus", "devlog", "party", "tavern", "ships", "admin"];
 const view = () => { const h = location.hash.slice(1); return VIEWS.includes(h) && (h !== "admin" || isAdmin()) ? h : "quests"; };
 addEventListener("hashchange", () => { render(); scrollTo(0, 0); });
 
@@ -370,7 +416,10 @@ function render() {
 
   const v = view();
   if (S.phase !== "app") app.innerHTML = gateView();
-  else app.innerHTML = header(v) + `<main class="wrap">${notices()}${({ quests: vQuests, focus: vFocus, devlog: vDevlog, party: vParty, ships: vShips, admin: vAdmin }[v])()}</main>`;
+  else {
+    if (v === "tavern") markTavernSeen();
+    app.innerHTML = header(v) + `<main class="wrap">${notices()}${({ quests: vQuests, focus: vFocus, devlog: vDevlog, party: vParty, tavern: vTavern, ships: vShips, admin: vAdmin }[v])()}</main>`;
+  }
 
   for (const id in kept) { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = kept[id]; else el.value = kept[id]; el.dataset.dirty = "1"; } }
   if (aid) { const el = document.getElementById(aid); if (el) { el.focus({ preventScroll: true }); if (sel) try { el.setSelectionRange(sel[0], sel[1]); } catch {} } }
@@ -410,7 +459,8 @@ function header(v) {
   const lv = levelOf(S.member.xp), cur = xpAt(lv), nxt = xpAt(lv + 1);
   const pct = Math.min(100, ((S.member.xp - cur) / (nxt - cur)) * 100);
   const st = streakOf(S.member.days);
-  const tabs = [["quests", "Quests"], ["focus", S.focus ? "Focus ●" : "Focus"], ["devlog", "Devlog"], ["party", "Party"], ["ships", "Ship Wall"]];
+  const unread = v === "tavern" ? 0 : tavernUnread();
+  const tabs = [["quests", "Quests"], ["focus", S.focus ? "Focus ●" : "Focus"], ["devlog", "Devlog"], ["party", "Party"], ["tavern", unread ? `Tavern (${unread})` : "Tavern"], ["ships", "Ship Wall"]];
   if (isAdmin()) tabs.push(["admin", "Admin"]);
   const connTxt = { ok: "", slow: "Live updates paused, reconnecting…" }[S.conn];
   return `<header class="top"><div class="wrap">
@@ -570,13 +620,14 @@ function vFocus() {
   let main;
   if (S.ui.reward) {
     const r = S.ui.reward;
-    main = `<div class="reward"><span class="label">Run complete</span><div class="big num">+${r.xp} XP</div><p>${r.mins} focused minutes${r.quest ? ` on <b>${esc(r.quest)}</b>` : ""}. The day counts toward your streak.</p>
+    main = `<div class="reward"><span class="label">Run complete</span><div class="big num">+${r.xp} XP</div><p>${r.mins} focused minutes${r.quest ? ` on <b>${esc(r.quest)}</b>` : ""}. The day counts toward your streak.${r.bonus ? ` Raid bonus: +${r.bonus} XP for focusing with your party.` : ""}</p>
       <div class="row">${r.questId && S.board.quests.find((q) => q.id === r.questId && q.status === "doing") ? `<button class="btn primary" data-act="q-move" data-id="${r.questId}" data-to="done">Mark quest done</button>` : ""}<button class="btn" data-act="f-dismiss">Another run</button><a class="btn ghost" href="#devlog" style="text-decoration:none">Write a devlog line</a></div></div>`;
   } else if (S.ui.lost) {
     main = `<div class="reward"><span class="label" style="color:var(--bad)">Run lost</span><div class="big" style="color:var(--bad)">You left the dungeon</div><p>You were away for ${Math.round(S.ui.lost / 1000)} seconds. Strict mode ends a run after 15 seconds away. No XP this time.</p><button class="btn primary" data-act="f-dismiss">Try again</button></div>`;
   } else if (f) {
     main = `<div class="stack" style="justify-items:stretch">
-      <div class="label" style="text-align:center">${f.questId ? "Questing: " + esc(questTitle(f.questId)) : "Free run"} · ${f.mins} min${f.strict ? " · strict" : ""}</div>
+      <div class="label" style="text-align:center">${f.questId ? "Questing: " + esc(questTitle(f.questId)) : "Free run"} · ${f.mins} min${f.strict ? " · strict" : ""}${f.raidId ? " · raid" : ""}</div>
+      ${f.raidId ? `<p class="label" style="text-align:center;color:var(--accent)">${raidMates(f.raidId).length ? "Raiding with " + raidMates(f.raidId).map((u) => esc(nm(u))).join(", ") : "Waiting for your party to join…"}</p>` : ""}
       <div class="timer running num" id="timer">--:--</div>
       <div class="dungeon" aria-hidden="true"><i id="fbar"></i><span class="hero-dot" id="fdot"></span></div>
       <div class="row" style="justify-content:center">${S.ui.confirmAbandon ? `<span>Abandon this run? You get no XP.</span><button class="btn danger small" data-act="f-abandon-yes">Abandon</button><button class="btn ghost small" data-act="f-abandon-no">Keep going</button>` : `<button class="btn ghost" data-act="f-abandon">Abandon run</button>`}</div>
@@ -588,6 +639,7 @@ function vFocus() {
       <label class="field"><span class="label">Quest</span><select id="f-quest"><option value="">Free run (no quest)</option>${doing.map((q) => `<option value="${q.id}" ${S.ui.focusQuest === q.id ? "selected" : ""}>${esc(q.title)}</option>`).join("")}</select>
         ${doing.length ? "" : `<span class="muted">Start a quest on the Quests tab to tie runs to it.</span>`}</label>
       <label class="row" style="gap:8px"><input type="checkbox" id="f-strict" ${S.ui.strict ? "checked" : ""}> Strict mode: leaving the tab for 15+ seconds ends the run</label>
+      <label class="row" style="gap:8px"><input type="checkbox" id="f-raid" ${S.ui.raid ? "checked" : ""}> Open as a raid: your party can join, and everyone gets +10 XP for focusing together</label>
       <div class="row"><button class="btn primary" type="submit">Enter the dungeon</button></div></form>`;
   }
   const live = liveFocusers(), others = Object.entries(live).filter(([id]) => id !== myId());
@@ -596,7 +648,10 @@ function vFocus() {
     <div class="stack">
       <div class="panel stack"><span class="label">Today</span><div class="stats"><div class="stat"><span class="label">Runs</span><b>${runsToday}</b></div><div class="stat"><span class="label">Minutes</span><b>${minsToday}</b></div><div class="stat"><span class="label">All-time hrs</span><b>${(S.member.totalMinutes / 60).toFixed(1)}</b></div></div>
         <p class="muted">1 XP per focused minute. Any finished run counts as showing up today.</p></div>
-      <div class="panel stack"><span class="label">Focusing right now</span>${others.length ? others.map(([id, x]) => `<div class="row">${avatar(id)}<div><b>${esc(nm(id))}</b><div class="muted">${x.quest ? esc(String(x.quest).slice(0, 80)) : "Free run"} · <span class="num" data-ends="${x.endsAt}">${Math.max(0, Math.ceil((x.endsAt - Date.now()) / 60000))}</span> min left</div></div></div>`).join("") : `<p class="empty">Nobody else is in a run. Start one and your party will see it.</p>`}</div>
+      <div class="panel stack"><span class="label">Focusing right now</span>${others.length ? others.map(([id, x]) => {
+        const canJoin = x.open && x.raidId && !S.focus && x.endsAt - Date.now() > 120000;
+        return `<div class="row between"><span class="row" style="flex-wrap:nowrap;min-width:0">${avatar(id)}<span style="min-width:0"><b>${esc(nm(id))}</b>${x.open ? ` <span class="chip core">Raid</span>` : ""}<span class="muted" style="display:block">${x.quest ? esc(String(x.quest).slice(0, 80)) : "Free run"} · <span class="num" data-ends="${x.endsAt}">${Math.max(0, Math.ceil((x.endsAt - Date.now()) / 60000))}</span> min left</span></span></span>
+          ${canJoin ? `<button class="btn small primary" data-act="raid-join" data-raid="${esc(x.raidId)}" data-ends="${x.endsAt}">Join raid</button>` : ""}</div>`; }).join("") : `<p class="empty">Nobody else is in a run. Start a raid and your party can join you.</p>`}</div>
     </div></section>`;
 }
 
@@ -631,14 +686,15 @@ function vParty() {
   feed.sort((a, b) => b.l.t.localeCompare(a.l.t));
   const mine = (S.cheers[myId()] && S.cheers[myId()].given) || {};
   return `
+  ${onlineStrip()}
   ${goal ? `<section class="panel stack"><div class="row between"><span class="label">Group goal this month</span><span class="label num">${(groupMins / 60).toFixed(1)} / ${goal} hrs</span></div><div class="meter xp"><i style="width:${Math.min(100, (groupMins / 60 / goal) * 100)}%"></i></div></section>` : ""}
   <section class="stack"><div class="row between"><h2>Your party</h2><span class="label">${ids.length} member${ids.length === 1 ? "" : "s"} · ${Object.keys(live).length} focusing now</span></div>
     ${ids.length <= 1 ? `<p class="muted">Just you so far. ${isAdmin() ? "Invite friends from the Admin tab." : ""}</p>` : ""}
     <div class="members">${ids.map((id) => memberCard(id, ms[id], live[id])).join("")}</div></section>
   <section class="stack"><h2>Devlog feed</h2>
-    ${feed.length ? `<div class="feed">${feed.slice(0, 40).map(({ id, l }) => { const k = cheerKey(id, l.id), n = cheerCount(id, l.id), on = !!mine[k];
+    ${feed.length ? `<div class="feed">${feed.slice(0, 40).map(({ id, l }) => { const k = cheerKey(id, l.id), n = cheerCount(id, l.id), on = !!mine[k], th = thread(`l:${id}:${l.id}`);
       return `<div class="entry">${avatar(id)}<div class="body"><div class="row between"><b>${esc(nm(id))}</b><span class="label">${esc(fmtDate(l.t))}</span></div><div class="txt">${esc(l.text)}</div>${safeUrl(l.link) ? `<a href="${esc(safeUrl(l.link))}" target="_blank" rel="noopener">${esc(l.link.slice(0, 60))}</a>` : ""}
-        <div class="row">${id !== myId() && S.uid ?`<button class="btn small ${on ? "on" : "ghost"}" data-act="cheer" data-k="${esc(k)}" aria-pressed="${on}">High-five${n ? " · " + n : ""}</button>` : `<span class="hf muted">${n} high-five${n === 1 ? "" : "s"}</span>`}</div></div></div>`; }).join("")}</div>` : `<p class="empty">No devlog posts yet. The first one sets the tone.</p>`}
+        <div class="row">${id !== myId() && S.uid ?`<button class="btn small ${on ? "on" : "ghost"}" data-act="cheer" data-k="${esc(k)}" aria-pressed="${on}">High-five${n ? " · " + n : ""}</button>` : `<span class="hf muted">${n} high-five${n === 1 ? "" : "s"}</span>`}${th.btn}</div>${th.body}</div></div>`; }).join("")}</div>` : `<p class="empty">No devlog posts yet. The first one sets the tone.</p>`}
   </section>`;
 }
 function memberCard(id, m, live) {
@@ -654,13 +710,100 @@ function memberCard(id, m, live) {
   </article>`;
 }
 
+/* ---------- community: tavern, threads, online ---------- */
+const TAGS = { chat: "Chat", help: "Help", showcase: "Showcase", playtest: "Playtest" };
+const TAG_HINT = { chat: "Anything game-dev", help: "Stuck on something? Ask the party", showcase: "Show off a GIF, a level, a mechanic", playtest: "Ask people to try your build" };
+const idsafe = (k) => String(k).replace(/[^A-Za-z0-9_-]/g, "_");
+const hiddenSet = () => S.settings.hidden || {};
+function allPosts() {
+  const out = [];
+  Object.entries(allMembers()).forEach(([by, m]) => (m.posts || []).forEach((p) => out.push(Object.assign({ by, key: `p:${by}:${p.id}` }, p))));
+  return out.filter((p) => !hiddenSet()[p.key]);
+}
+function allReplies() {
+  const out = [];
+  Object.entries(allMembers()).forEach(([by, m]) => (m.replies || []).forEach((r) => out.push(Object.assign({ by, key: `r:${by}:${r.id}` }, r))));
+  return out.filter((r) => !hiddenSet()[r.key]);
+}
+const repliesTo = (key) => allReplies().filter((r) => r.to === key).sort((a, b) => a.t.localeCompare(b.t));
+const ownerOf = (key) => String(key).split(":")[1];
+function tavernUnread() {
+  const seen = ls.get("shipit.seen") || "";
+  if (!seen) return 0;
+  const me = myId();
+  const posts = allPosts().filter((p) => p.by !== me && p.t > seen).length;
+  const replies = allReplies().filter((r) => r.by !== me && r.t > seen && ownerOf(r.to) === me).length;
+  return posts + replies;
+}
+function markTavernSeen() {
+  S.ui.prevSeen = S.ui.prevSeen ?? (ls.get("shipit.seen") || "");
+  ls.set("shipit.seen", new Date().toISOString());
+}
+function cheerBtn(key) {
+  const n = Object.values(S.cheers).filter((c) => c && c.given && c.given[key]).length;
+  const mine = !!(((S.cheers[myId()] || {}).given || {})[key]);
+  if (ownerOf(key) === myId()) return `<span class="hf muted">${n} high-five${n === 1 ? "" : "s"}</span>`;
+  return `<button class="btn small ${mine ? "on" : "ghost"}" data-act="cheer" data-k="${esc(key)}" aria-pressed="${mine}">High-five${n ? " · " + n : ""}</button>`;
+}
+function modBtns(key) {
+  const own = ownerOf(key) === myId();
+  let h = "";
+  if (own) h += `<button class="btn ghost small" data-act="del-own" data-k="${esc(key)}">Delete</button>`;
+  else if (isAdmin()) h += `<button class="btn ghost small danger" data-act="hide" data-k="${esc(key)}">Hide</button>`;
+  return h;
+}
+function thread(key, label = "Reply") {
+  const reps = repliesTo(key), open = !!S.ui.open[key];
+  const btn = `<button class="btn ghost small" data-act="thread" data-k="${esc(key)}" aria-expanded="${open}">${esc(label)}${reps.length ? " · " + reps.length : ""}</button>`;
+  if (!open) return { btn, body: "" };
+  const body = `<div class="thread">
+    ${reps.map((r) => `<div class="reply">${avatar(r.by)}<div class="body"><div class="row between"><b>${esc(nm(r.by))}</b><span class="label">${esc(fmtDate(r.t))}</span></div><div class="txt">${esc(r.body)}</div><div class="row">${modBtns(r.key)}</div></div></div>`).join("")}
+    <form class="row" data-form="reply" data-k="${esc(key)}"><input type="text" id="rp-${idsafe(key)}" maxlength="500" placeholder="Write a reply" required style="flex:1 1 200px"><button class="btn small cool" type="submit">Send</button></form></div>`;
+  return { btn, body };
+}
+function onlineNow() {
+  const seen = new Map();
+  for (const p of S.peers) if (p.uid && !seen.has(p.uid)) seen.set(p.uid, p);
+  if (S.uid && !seen.has(S.uid)) seen.set(S.uid, { uid: S.uid, focus: S.focus });
+  return [...seen.values()];
+}
+function onlineStrip() {
+  const on = onlineNow(), now = Date.now();
+  return `<div class="panel row" style="gap:8px 14px"><span class="label">Online now · ${on.length}</span>
+    ${on.map((p) => `<span class="online">${avatar(p.uid)}<span>${esc(nm(p.uid))}${p.uid === myId() ? " (you)" : ""}</span>${p.focus && p.focus.endsAt > now ? `<span class="livedot" title="In a focus run"></span>` : ""}</span>`).join("")}</div>`;
+}
+function vTavern() {
+  const tag = S.ui.tag || "all", prevSeen = S.ui.prevSeen || "";
+  const lastAct = (p) => [p.t, ...repliesTo(p.key).map((r) => r.t)].sort().pop();
+  const posts = allPosts().filter((p) => tag === "all" || p.tag === tag).sort((a, b) => lastAct(b).localeCompare(lastAct(a)));
+  const ptag = S.ui.postTag || "chat";
+  return `${onlineStrip()}
+  <section class="panel hero stack"><span class="label">Tavern</span><h2>Talk shop with your party.</h2>
+    <form class="stack" data-form="post">
+      <div class="row" role="group" aria-label="Post type">${Object.entries(TAGS).map(([k, n]) => `<button type="button" class="btn small ${ptag === k ? "on" : "ghost"}" data-act="post-tag" data-t="${k}" aria-pressed="${ptag === k}">${n}</button>`).join("")}</div>
+      <p class="muted">${esc(TAG_HINT[ptag])}${ptag === "help" ? ". Whoever helps earns XP." : "."}</p>
+      <label class="field"><span class="label">Title</span><input type="text" id="po-title" maxlength="100" required placeholder="${ptag === "help" ? "My jump feels floaty, how do I fix it?" : ptag === "playtest" ? "Lantern Diver build 3, 5 minutes" : ptag === "showcase" ? "Got the water shader working" : "What's everyone working on this week?"}"></label>
+      <label class="field"><span class="label">Details (optional)</span><textarea id="po-body" maxlength="1500" rows="3"></textarea></label>
+      <div class="row" style="align-items:end"><label class="field grow"><span class="label">Link (build, GIF, video, optional)</span><input type="url" id="po-link" maxlength="300" placeholder="https://"></label><button class="btn primary" type="submit">Post</button></div>
+    </form></section>
+  <section class="stack">
+    <div class="row" role="group" aria-label="Filter posts">${[["all", "All"], ...Object.entries(TAGS)].map(([k, n]) => `<button class="btn small ${tag === k ? "on" : "ghost"}" data-act="tag-filter" data-t="${k}" aria-pressed="${tag === k}">${n}</button>`).join("")}</div>
+    ${posts.length ? posts.map((p) => { const th = thread(p.key, p.tag === "help" ? "Help out" : p.tag === "playtest" ? "Give feedback" : "Reply"); const isNew = prevSeen && p.by !== myId() && lastAct(p) > prevSeen;
+      return `<article class="post ${isNew ? "new" : ""}"><div class="row between"><span class="row" style="gap:8px;flex-wrap:nowrap;min-width:0">${avatar(p.by)}<b>${esc(nm(p.by))}</b></span><span class="row" style="gap:6px">${isNew ? `<span class="chip core">New</span>` : ""}<span class="chip tag-${esc(p.tag)}">${esc(TAGS[p.tag] || "Chat")}</span><span class="label">${esc(fmtDate(p.t))}</span></span></div>
+        <h3>${esc(p.title)}</h3>${p.body ? `<p class="txt">${esc(p.body)}</p>` : ""}${safeUrl(p.link) ? `<a href="${esc(safeUrl(p.link))}" target="_blank" rel="noopener">${esc(p.link.slice(0, 70))}</a>` : ""}
+        <div class="row">${cheerBtn(p.key)}${th.btn}${modBtns(p.key)}</div>${th.body}</article>`; }).join("")
+      : `<p class="empty">${tag === "all" ? "Nothing here yet. Ask a question, share a GIF, or ask for playtesters." : "No " + esc(TAGS[tag]) + " posts yet."}</p>`}
+  </section>`;
+}
+
 /* ---------- Ship wall ---------- */
 function vShips() {
   const ms = allMembers(), all = [];
   Object.entries(ms).forEach(([id, m]) => (m.ships || []).forEach((s) => all.push({ id, s })));
   all.sort((a, b) => b.s.date.localeCompare(a.s.date));
   return `<section class="stack"><span class="label">Ship Wall</span><h2>Games that got finished.</h2><p class="muted">Starting is easy. These made it out the door.</p></section>
-  ${all.length ? `<section class="ships">${all.map(({ id, s }) => `<article class="ship"><div class="cart">${esc(s.title)}</div><div class="row">${avatar(id)}<div><b>${esc(nm(id))}</b><div class="label">${esc(fmtDate(s.date))}</div></div></div>${safeUrl(s.link) ? `<a class="btn cool small" style="text-decoration:none;justify-self:start" href="${esc(safeUrl(s.link))}" target="_blank" rel="noopener">Play it</a>` : ""}</article>`).join("")}</section>`
+  ${all.length ? `<section class="ships">${all.map(({ id, s }) => { const key = `s:${id}:${s.id}`, th = thread(key, "Feedback"); return `<article class="ship"><div class="cart">${esc(s.title)}</div><div class="row">${avatar(id)}<div><b>${esc(nm(id))}</b><div class="label">${esc(fmtDate(s.date))}</div></div></div>
+    <div class="row">${safeUrl(s.link) ? `<a class="btn cool small" style="text-decoration:none" href="${esc(safeUrl(s.link))}" target="_blank" rel="noopener">Play it</a>` : ""}${cheerBtn(key)}${th.btn}</div>${th.body}</article>`; }).join("")}</section>`
   : `<section class="panel stack"><p class="empty">Nothing shipped yet. The first game on this wall gets the most high-fives. Hit <b>Ship it</b> on your project when it's playable.</p></section>`}`;
 }
 
@@ -718,13 +861,18 @@ function invRow(i) {
 function saveFocus() { if (S.focus) ls.set("shipit.focus", S.focus); else ls.del("shipit.focus"); }
 function setPresence() {
   if (!S.chan || !S.chanReady) return;
-  S.chan.track({ uid: S.uid, focus: S.focus ? { endsAt: S.focus.endsAt, quest: questTitle(S.focus.questId).slice(0, 120), mins: S.focus.mins } : null }).catch(() => {});
+  const f = S.focus;
+  S.chan.track({ uid: S.uid, focus: f ? { endsAt: f.endsAt, quest: questTitle(f.questId).slice(0, 120), mins: f.mins, raidId: f.raidId || null, open: !!f.open } : null }).catch(() => {});
 }
-function startRun(mins, questId, strict) {
+// raid: null for a solo run, {open:true} to host a raid, or {raidId, endsAt} to join one.
+function startRun(mins, questId, strict, raid) {
   const now = Date.now();
-  S.focus = { startedAt: now, endsAt: now + mins * 60000, mins, questId, strict, hiddenAt: null, lastSeen: now };
+  let endsAt = now + mins * 60000, raidId = null, open = false;
+  if (raid && raid.raidId) { endsAt = raid.endsAt; raidId = raid.raidId; open = true; mins = Math.max(1, Math.round((endsAt - now) / 60000)); }
+  else if (raid && raid.open) { raidId = S.uid + "-" + now.toString(36); open = true; }
+  S.focus = { startedAt: now, endsAt, mins, questId, strict, hiddenAt: null, lastSeen: now, raidId, open, party: false };
   S.ui.reward = null; S.ui.lost = null; S.ui.confirmAbandon = false;
-  saveFocus(); setPresence(); blip("tap");
+  saveFocus(); setPresence(); blip("start");
   try { navigator.wakeLock && navigator.wakeLock.request("screen").catch(() => {}); } catch {}
   render();
 }
@@ -738,8 +886,10 @@ function completeRun() {
   m._runsToday = { date: today(), n: (m._runsToday?.date === today() ? m._runsToday.n : 0) + 1 };
   m._minsToday = { date: today(), n: (m._minsToday?.date === today() ? m._minsToday.n : 0) + mins };
   markDay();
-  S.ui.reward = { xp: mins, mins, quest: questTitle(f.questId), questId: f.questId };
-  addXP(mins); blip("run"); burst(70);
+  const bonus = f.party ? 10 : 0;
+  if (bonus) m.raids = (m.raids || 0) + 1;
+  S.ui.reward = { xp: mins + bonus, mins, bonus, quest: questTitle(f.questId), questId: f.questId };
+  addXP(mins + bonus); blip("run"); burst(f.party ? 120 : 70);
   saveMember(); render();
 }
 function tick() {
@@ -747,6 +897,7 @@ function tick() {
   if (f) {
     const now = Date.now();
     if (!document.hidden) { f.lastSeen = now; }
+    if (f.raidId && !f.party && raidMates(f.raidId).length) { f.party = true; saveFocus(); }
     if (now >= f.endsAt && !document.hidden) { completeRun(); return; }
     const left = Math.max(0, f.endsAt - now), mm = Math.floor(left / 60000), ss = Math.floor((left % 60000) / 1000);
     const t = $("#timer"); if (t) t.textContent = pad(mm) + ":" + pad(ss);
@@ -844,6 +995,21 @@ const ACT = {
     const fallback = () => { const i = document.getElementById("inv-" + el.dataset.code); if (i) { i.focus(); i.select(); } toast("Press Ctrl+C to copy."); };
     try { navigator.clipboard.writeText(link).then(done, fallback); } catch { fallback(); }
   },
+  thread(el) { const k = el.dataset.k; S.ui.open[k] = !S.ui.open[k]; render(); if (S.ui.open[k]) { const i = document.getElementById("rp-" + idsafe(k)); if (i) i.focus(); } },
+  "raid-join"(el) {
+    const q = S.board.quests.find((x) => x.status === "doing");
+    startRun(0, S.ui.focusQuest || (q ? q.id : null), S.ui.strict, { raidId: el.dataset.raid, endsAt: +el.dataset.ends });
+    toast("Joined the raid.");
+  },
+  "post-tag"(el) { S.ui.postTag = el.dataset.t; render(); },
+  "tag-filter"(el) { S.ui.tag = el.dataset.t; render(); },
+  "del-own"(el) {
+    const [kind, , id] = el.dataset.k.split(":");
+    if (kind === "p") S.member.posts = S.member.posts.filter((p) => p.id !== id);
+    if (kind === "r") S.member.replies = S.member.replies.filter((r) => r.id !== id);
+    saveMember(); render();
+  },
+  hide(el) { S.settings.hidden = Object.assign({}, S.settings.hidden, { [el.dataset.k]: 1 }); saveSettings(); toast("Hidden for everyone."); render(); },
   "gate-tab"(el) { S.gate.tab = el.dataset.t; S.gate.err = ""; S.gate.info = ""; render(); },
   async signout() { endRun(); await S.sb.auth.signOut(); },
 };
@@ -873,7 +1039,10 @@ const FORM = {
     markDay(); S.board = blankBoard(); S.ui.shipOpen = false;
     addXP(200, "Shipped!"); blip("level"); burst(140); saveBoard(); location.hash = "ships"; return true;
   },
-  "focus-start"(f) { const q = $("#f-quest", f).value || null; S.ui.strict = $("#f-strict", f).checked; ls.set("shipit.strict", S.ui.strict); S.ui.focusQuest = q; startRun(S.ui.dur, q, S.ui.strict); return true; },
+  "focus-start"(f) {
+    const q = $("#f-quest", f).value || null; S.ui.strict = $("#f-strict", f).checked; S.ui.raid = $("#f-raid", f).checked;
+    ls.set("shipit.strict", S.ui.strict); S.ui.focusQuest = q; startRun(S.ui.dur, q, S.ui.strict, S.ui.raid ? { open: true } : null); return true;
+  },
   log(f) {
     const text = $("#lg-text", f).value.trim(); if (!text) return;
     const first = !S.member.logs.some((l) => l.t.slice(0, 10) === today());
@@ -884,6 +1053,21 @@ const FORM = {
   announce(f) { S.settings.announcement = $("#ad-ann", f).value.trim().slice(0, 300); saveSettings(); toast("Announcement posted."); return true; },
   challenge(f) { S.settings.challenge = { title: $("#ad-ch-title", f).value.trim().slice(0, 80), details: $("#ad-ch-det", f).value.trim().slice(0, 300), ends: $("#ad-ch-end", f).value }; saveSettings(); toast("Challenge posted."); return true; },
   goal(f) { S.settings.goalHours = Math.max(0, Math.min(10000, +$("#ad-goal", f).value || 0)); saveSettings(); toast("Goal saved."); return true; },
+  post(f) {
+    const title = $("#po-title", f).value.trim(); if (!title) return;
+    S.member.posts.push({ id: rid(), t: new Date().toISOString(), tag: S.ui.postTag || "chat", title: title.slice(0, 100), body: $("#po-body", f).value.trim().slice(0, 1500), link: safeUrl($("#po-link", f).value.trim()) });
+    if (S.member.posts.length > 100) S.member.posts = S.member.posts.slice(-100);
+    S.ui.tag = "all"; blip("tap"); toast("Posted to the Tavern."); saveMember(); return true;
+  },
+  reply(f) {
+    const key = f.dataset.k, input = f.querySelector("input"), body = input.value.trim(); if (!body) return;
+    const post = allPosts().find((p) => p.key === key);
+    const firstHelp = post && post.tag === "help" && post.by !== myId() && !S.member.replies.some((r) => r.to === key);
+    S.member.replies.push({ id: rid(), t: new Date().toISOString(), to: key, body: body.slice(0, 500) });
+    if (S.member.replies.length > 300) S.member.replies = S.member.replies.slice(-300);
+    if (firstHelp) { S.member.helpCount = (S.member.helpCount || 0) + 1; addXP(5, "Helped a teammate"); }
+    S.ui.open[key] = true; blip("tap"); saveMember(); return true;
+  },
   invite(f) {
     const code = newCode(), note = $("#inv-note", f).value.trim().slice(0, 60), days = +$("#inv-days", f).value || 0;
     S.sb.from("invites").insert({ code, note: note || null, created_by: S.uid, expires_at: days ? new Date(Date.now() + days * 864e5).toISOString() : null })
@@ -998,7 +1182,7 @@ function subscribe() {
   ch.on("presence", { event: "sync" }, () => {
     const st = ch.presenceState();
     S.peers = Object.values(st).map((arr) => arr[arr.length - 1]).filter(Boolean).map((p) => ({ uid: p.uid, focus: p.focus }));
-    if (S.phase === "app" && (view() === "party" || view() === "focus")) render();
+    if (S.phase === "app" && ["party", "focus", "tavern"].includes(view())) render();
   });
   ch.subscribe((status) => {
     if (status === "SUBSCRIBED") {
