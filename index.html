@@ -173,6 +173,15 @@ th { font-family: var(--f-label); font-size: 0.68rem; color: var(--muted); font-
 details summary { cursor: pointer; font-family: var(--f-label); font-size: 0.74rem; color: var(--muted); }
 ol.howto { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
 
+.steps-panel { display: grid; gap: 10px; border-top: 2px dashed var(--line); padding-top: 10px; }
+.checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.checklist li { display: flex; gap: 6px; align-items: flex-start; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--panel-2); }
+.checklist li.done .st { text-decoration: line-through; color: var(--muted); }
+.checklist .st { overflow-wrap: anywhere; font-size: .92rem; }
+.checklist input[type=checkbox] { width: 16px; height: 16px; margin-top: 3px; accent-color: var(--cool); flex: none; }
+.btn.spice.s1 { border-color: var(--good); color: var(--good); }
+.btn.spice.s2 { border-color: var(--xp); color: var(--xp); }
+.btn.spice.s3 { border-color: var(--bad); color: var(--bad); }
 .post { background: var(--panel); border: var(--px) solid var(--line); padding: 14px; display: grid; gap: 8px; min-width: 0; }
 .post.new { border-color: var(--accent); }
 .post .txt, .reply .txt { overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -261,7 +270,7 @@ const S = {
   gate: { tab: new URLSearchParams(location.search).get("invite") ? "join" : "signin", err: "", busy: false, info: "" },
   conn: "ok", member: blankMember(), board: blankBoard(), members: {}, cheers: {}, profiles: {}, invites: [],
   settings: { announcement: "", challenge: null, goalHours: 0 }, peers: [],
-  focus: null, ui: { open: {}, wiz: null, reward: null, lost: null, shipOpen: false, confirmNew: false, confirmRemove: null, newInvite: null, dur: ls.get("shipit.dur") || 25, strict: ls.get("shipit.strict") ?? true },
+  focus: null, ui: { open: {}, stepsOpen: {}, bdKind: {}, wiz: null, reward: null, lost: null, shipOpen: false, confirmNew: false, confirmRemove: null, newInvite: null, dur: ls.get("shipit.dur") || 25, strict: ls.get("shipit.strict") ?? true },
   sound: ls.get("shipit.sound") ?? true,
 };
 const myId = () => S.uid || "local";
@@ -560,7 +569,9 @@ function questCard(q) {
   }[q.status];
   return `<div class="quest ${q.status}"><div class="row" style="gap:6px"><span class="chip ${q.size}">${SIZE_NAME[q.size]}</span>${q.core ? `<span class="chip core">Core</span>` : ""}</div>
     <div class="qt">${esc(q.title)}</div>
-    <div class="row between" style="gap:6px"><span class="row" style="gap:6px">${acts}</span>${q.status !== "done" ? `<button class="btn ghost small" data-act="q-del" data-id="${q.id}" aria-label="Delete quest">✕</button>` : ""}</div></div>`;
+    ${stepSummary(q)}
+    <div class="row between" style="gap:6px"><span class="row" style="gap:6px">${acts}</span>${q.status !== "done" ? `<button class="btn ghost small" data-act="q-del" data-id="${q.id}" aria-label="Delete quest">✕</button>` : ""}</div>
+    ${S.ui.stepsOpen[q.id] && q.status !== "done" ? stepsPanel(q) : ""}</div>`;
 }
 function shipForm(p) {
   return `<form class="stack" data-form="ship" style="border-top:2px dashed var(--line);padding-top:12px">
@@ -571,6 +582,101 @@ function shipForm(p) {
     </div>
     <div class="row"><button class="btn primary" type="submit">Ship it</button><button class="btn ghost" type="button" data-act="ship-cancel">Not yet</button></div>
   </form>`;
+}
+
+/* ---------- Breakdown: split a quest into small steps (no AI, game-dev templates) ---------- */
+// Each step is [level, text]. Level 1 shows on Mild, 2 on Medium and up, 3 only on Spicy.
+// {x} is replaced with the quest's name.
+const BREAKDOWN = {
+  mechanic: { name: "Mechanic", words: /jump|move|movement|run|dash|attack|shoot|combat|ability|skill|physics|control|swim|climb|grapple|throw|pick ?up|interact|mechanic|player|weapon|power/i, steps: [
+    [2, "Write one sentence: what should {x} feel like?"], [3, "Find a game that does {x} well and note what makes it good"],
+    [1, "Get the simplest version of {x} working with grey boxes"], [3, "Hook up keyboard and controller input"],
+    [2, "Pull the tweakable numbers into variables"], [1, "Play with the numbers until {x} feels right"],
+    [2, "Add feedback: a sound, a particle and a little screen shake"], [3, "Handle edge cases: walls, corners, spamming the button"],
+    [1, "Playtest {x} for 5 minutes and write down what felt off"], [2, "Fix the worst thing from the playtest"]] },
+  enemy: { name: "Enemy / boss", words: /enemy|enemies|boss|npc|monster|\bai\b|mob|creature|guard/i, steps: [
+    [2, "Decide what {x} does in 3 short sentences"], [1, "Place a placeholder {x} that just stands there"],
+    [1, "Make {x} move or patrol"], [2, "Make {x} notice the player"], [1, "Give {x} one attack"],
+    [3, "Add a tell before the attack so players can react"], [1, "Let the player hurt and defeat {x}"],
+    [2, "Add hit flash, knockback and a death effect"], [3, "Tune health and damage"], [2, "Playtest the fight 3 times and adjust"]] },
+  level: { name: "Level / map", words: /level|map|stage|world|room|area|dungeon|zone|tutorial|layout/i, steps: [
+    [2, "Write the one idea {x} teaches or tests"], [3, "Sketch {x} on paper"], [1, "Block out {x} with simple shapes"],
+    [1, "Play through {x} start to finish"], [2, "Place enemies, pickups and hazards"], [3, "Add a checkpoint or safe moment"],
+    [2, "Watch someone else play {x} without helping"], [1, "Fix the spots where people got stuck or bored"],
+    [3, "Dress {x} with real art"], [2, "Connect {x} to the next level or menu"]] },
+  ui: { name: "UI / menu", words: /menu|\bui\b|hud|button|screen|settings|options|inventory|title|pause|dialog|health ?bar|score/i, steps: [
+    [2, "List what {x} must show or let you do"], [3, "Sketch the layout"], [1, "Build {x} with placeholder boxes and text"],
+    [1, "Hook up the buttons or values so {x} works"], [2, "Make it work with controller and keyboard"],
+    [3, "Check it at different screen sizes"], [2, "Add hover, press and transition feedback"], [1, "Style {x} to match the game"],
+    [3, "Add sounds for UI actions"]] },
+  art: { name: "Art / animation", words: /sprite|art|animation|animate|tileset|tile|character|background|model|texture|portrait|icon|logo|shader|vfx|effect/i, steps: [
+    [2, "Collect 3 reference images for {x}"], [3, "Pick a palette and size"], [1, "Make a rough version of {x}"],
+    [1, "Put the rough version in the game and look at it there"], [2, "Fix whatever reads badly at game size"],
+    [1, "Clean up and finish {x}"], [3, "Add secondary motion or small details"], [2, "Export and import the final version"]] },
+  audio: { name: "Sound / music", words: /sound|sfx|music|audio|song|track|voice|ambien/i, steps: [
+    [2, "List every moment that needs a sound for {x}"], [3, "Find references for the mood"], [1, "Make or find placeholder sounds"],
+    [1, "Hook the sounds into the game"], [2, "Balance the volumes"], [3, "Add a little pitch variation so repeats don't get annoying"],
+    [1, "Replace placeholders with final sounds"], [2, "Add a volume setting"]] },
+  bug: { name: "Bug fix", words: /bug|fix|crash|broken|glitch|error|issue|freeze|lag|stuck/i, steps: [
+    [1, "Find the exact steps that cause {x}"], [3, "Write the steps down so you can repeat them"], [2, "Check whether it happens every time"],
+    [1, "Narrow down which code or object causes it"], [3, "Add logs or debug drawing around the suspect"], [1, "Make the smallest fix"],
+    [1, "Repeat the steps to confirm {x} is gone"], [2, "Check you didn't break anything nearby"]] },
+  save: { name: "Save / load", words: /save|load|progress|persist|checkpoint|unlock/i, steps: [
+    [1, "List exactly what needs saving for {x}"], [1, "Save that data to a file or storage"], [1, "Load it back on start"],
+    [2, "Handle the first launch when there's no save yet"], [3, "Handle a broken or old save file"], [2, "Add a way to reset progress"],
+    [1, "Test: save, quit, reopen, check everything"]] },
+  release: { name: "Build / release", words: /build|release|export|upload|itch|steam|publish|trailer|page|launch|ship|submit|jam/i, steps: [
+    [1, "Make a build of the game"], [1, "Play the build on a fresh run, start to finish"], [2, "Fix anything that breaks only in the build"],
+    [2, "Take 3 to 5 screenshots or a GIF"], [3, "Write a short description and controls list"], [1, "Create the page and upload the build"],
+    [3, "Ask one friend to download and play it"], [1, "Post the link on the Ship Wall"]] },
+  polish: { name: "Polish / juice", words: /polish|juice|feel|feedback|shake|particle|tween|smooth/i, steps: [
+    [1, "Play for 2 minutes and list the 3 flattest moments"], [1, "Add a sound to each"], [2, "Add particles or a flash to each"],
+    [3, "Add easing or squash and stretch to movement"], [2, "Add a tiny screen shake or hit pause on big moments"],
+    [1, "Play again and compare"], [3, "Turn down anything that got too noisy"]] },
+  generic: { name: "Anything", words: /.^/, steps: [
+    [2, "Write what done looks like for {x}"], [1, "Do the smallest first piece of {x}"], [3, "Find the part you're unsure about and try it first"],
+    [1, "Do the next piece"], [2, "Check it in the game"], [3, "Tidy up anything you rushed"], [1, "Test {x} and fix what's wrong"]] },
+};
+const SPICE = [[1, "Mild"], [2, "Medium"], [3, "Spicy"]];
+function guessKind(title) {
+  for (const [k, t] of Object.entries(BREAKDOWN)) if (k !== "generic" && t.words.test(title)) return k;
+  return "generic";
+}
+function shortName(title) {
+  let s = String(title).trim().replace(/[.!?]+$/, "");
+  s = s.replace(/^(add|make|build|create|implement|design|do|fix|finish|write|draw|code)\s+(an?|the|some)?\s*/i, "");
+  return s.length > 40 ? s.slice(0, 40).trim() + "…" : (s || "it");
+}
+function makeSteps(title, kind, spice) {
+  const x = shortName(title);
+  return BREAKDOWN[kind].steps.filter(([lv]) => lv <= spice).map(([, t]) => ({ id: rid(), t: t.replace(/\{x\}/g, x), done: false }));
+}
+function splitStep(text) {
+  const x = text.replace(/[.!?]+$/, "");
+  return [`Prep: ${x}`, `First half: ${x}`, `Finish and test: ${x}`].map((t) => ({ id: rid(), t: t.slice(0, 160), done: false }));
+}
+const nextStep = (q) => q && (q.steps || []).find((s) => !s.done);
+function stepSummary(q) {
+  const steps = q.steps || [], done = steps.filter((s) => s.done).length, open = !!S.ui.stepsOpen[q.id];
+  if (q.status === "done") return steps.length ? `<span class="label">${done}/${steps.length} steps</span>` : "";
+  const nx = nextStep(q);
+  return `<div class="stack" style="gap:4px">
+    ${steps.length ? `<div class="meter" style="height:8px"><i style="width:${(done / steps.length) * 100}%"></i></div>` : ""}
+    ${nx && !open ? `<div class="muted" style="font-size:.88rem"><span class="label">Next</span> ${esc(nx.t)}</div>` : ""}
+    <button class="btn ghost small" style="justify-self:start" data-act="steps-toggle" data-id="${q.id}" aria-expanded="${open}">${steps.length ? `Steps ${done}/${steps.length}` : "Break it down"}${open ? " ▲" : ""}</button></div>`;
+}
+function stepsPanel(q) {
+  const steps = q.steps || [], kind = S.ui.bdKind[q.id] || guessKind(q.title);
+  return `<div class="steps-panel">
+    ${steps.length ? `<ul class="checklist">${steps.map((s, i) => `<li class="${s.done ? "done" : ""}">
+      <label class="row" style="gap:8px;flex-wrap:nowrap;align-items:flex-start;flex:1;min-width:0"><input type="checkbox" data-act="step-toggle" data-id="${q.id}" data-s="${s.id}" ${s.done ? "checked" : ""}><span class="st">${esc(s.t)}</span></label>
+      <span class="row" style="gap:4px;flex-wrap:nowrap">${s.done ? "" : `<button class="btn ghost small" data-act="step-split" data-id="${q.id}" data-s="${s.id}" title="Break this step into smaller ones">Split</button>`}<button class="btn ghost small" data-act="step-del" data-id="${q.id}" data-s="${s.id}" aria-label="Remove step">✕</button></span></li>`).join("")}</ul>` : `<p class="muted">No steps yet. Break it down so you always know the next tiny thing to do.</p>`}
+    <form class="row" data-form="step-add" data-id="${q.id}"><input type="text" id="sa-${q.id}" maxlength="160" placeholder="Add a step" style="flex:1 1 140px"><button class="btn small" type="submit">Add</button></form>
+    <div class="bd stack" style="gap:6px"><span class="label">Break it down</span>
+      <select id="bd-kind-${q.id}" data-act-change="bd-kind" data-id="${q.id}" aria-label="Kind of task">${Object.entries(BREAKDOWN).map(([k, t]) => `<option value="${k}" ${k === kind ? "selected" : ""}>${t.name}</option>`).join("")}</select>
+      <div class="row" style="gap:6px">${SPICE.map(([lv, n]) => `<button class="btn small spice s${lv}" data-act="bd-go" data-id="${q.id}" data-lv="${lv}" title="${BREAKDOWN[kind].steps.filter(([l]) => l <= lv).length} steps">${n}</button>`).join("")}</div>
+      <span class="muted" style="font-size:.85rem">Mild gives a few big steps, Spicy gives lots of tiny ones.${steps.length ? " New steps are added after yours." : ""}</span></div>
+  </div>`;
 }
 
 /* Scope Slayer wizard */
@@ -629,6 +735,10 @@ function vFocus() {
       <div class="label" style="text-align:center">${f.questId ? "Questing: " + esc(questTitle(f.questId)) : "Free run"} · ${f.mins} min${f.strict ? " · strict" : ""}${f.raidId ? " · raid" : ""}</div>
       ${f.raidId ? `<p class="label" style="text-align:center;color:var(--accent)">${raidMates(f.raidId).length ? "Raiding with " + raidMates(f.raidId).map((u) => esc(nm(u))).join(", ") : "Waiting for your party to join…"}</p>` : ""}
       <div class="timer running num" id="timer">--:--</div>
+      ${(() => { const q = S.board.quests.find((x) => x.id === f.questId), nx = nextStep(q); if (!q || !(q.steps || []).length) return "";
+        const done = q.steps.filter((s) => s.done).length;
+        return nx ? `<div class="panel row between" style="padding:10px 12px"><span style="min-width:0"><span class="label">Step ${done + 1} of ${q.steps.length}</span><span style="display:block;overflow-wrap:anywhere">${esc(nx.t)}</span></span><button class="btn small cool" data-act="step-toggle" data-id="${q.id}" data-s="${nx.id}">Done, next</button></div>`
+          : `<p class="label" style="text-align:center;color:var(--good)">All ${q.steps.length} steps done</p>`; })()}
       <div class="dungeon" aria-hidden="true"><i id="fbar"></i><span class="hero-dot" id="fdot"></span></div>
       <div class="row" style="justify-content:center">${S.ui.confirmAbandon ? `<span>Abandon this run? You get no XP.</span><button class="btn danger small" data-act="f-abandon-yes">Abandon</button><button class="btn ghost small" data-act="f-abandon-no">Keep going</button>` : `<button class="btn ghost" data-act="f-abandon">Abandon run</button>`}</div>
       <p class="muted" style="text-align:center">${f.strict ? "Stay on this tab. Leaving for more than 15 seconds ends the run." : "Relaxed mode: you can switch tabs."}</p></div>`;
@@ -996,6 +1106,30 @@ const ACT = {
     try { navigator.clipboard.writeText(link).then(done, fallback); } catch { fallback(); }
   },
   thread(el) { const k = el.dataset.k; S.ui.open[k] = !S.ui.open[k]; render(); if (S.ui.open[k]) { const i = document.getElementById("rp-" + idsafe(k)); if (i) i.focus(); } },
+  "steps-toggle"(el) { const id = el.dataset.id; S.ui.stepsOpen[id] = !S.ui.stepsOpen[id]; render(); },
+  "step-toggle"(el) {
+    const q = S.board.quests.find((x) => x.id === el.dataset.id); if (!q) return;
+    const s = (q.steps || []).find((x) => x.id === el.dataset.s); if (!s) return;
+    s.done = !s.done;
+    if (s.done) {
+      blip("tap");
+      if (q.steps.every((x) => x.done)) { blip("quest"); burst(24); toast(q.status === "done" ? "All steps done." : "Every step done. Mark the quest done!"); }
+      else markDay();
+    }
+    saveBoard(); render();
+  },
+  "step-del"(el) { const q = S.board.quests.find((x) => x.id === el.dataset.id); if (!q) return; q.steps = (q.steps || []).filter((x) => x.id !== el.dataset.s); saveBoard(); render(); },
+  "step-split"(el) {
+    const q = S.board.quests.find((x) => x.id === el.dataset.id); if (!q) return;
+    const i = (q.steps || []).findIndex((x) => x.id === el.dataset.s); if (i < 0) return;
+    q.steps.splice(i, 1, ...splitStep(q.steps[i].t)); blip("tap"); saveBoard(); render();
+  },
+  "bd-go"(el) {
+    const q = S.board.quests.find((x) => x.id === el.dataset.id); if (!q) return;
+    const kind = S.ui.bdKind[q.id] || guessKind(q.title), lv = +el.dataset.lv;
+    q.steps = [...(q.steps || []), ...makeSteps(q.title, kind, lv)].slice(0, 40);
+    blip("quest"); burst(20); toast(`Broken into ${q.steps.length} steps.`); saveBoard(); render();
+  },
   "raid-join"(el) {
     const q = S.board.quests.find((x) => x.status === "doing");
     startRun(0, S.ui.focusQuest || (q ? q.id : null), S.ui.strict, { raidId: el.dataset.raid, endsAt: +el.dataset.ends });
@@ -1053,6 +1187,12 @@ const FORM = {
   announce(f) { S.settings.announcement = $("#ad-ann", f).value.trim().slice(0, 300); saveSettings(); toast("Announcement posted."); return true; },
   challenge(f) { S.settings.challenge = { title: $("#ad-ch-title", f).value.trim().slice(0, 80), details: $("#ad-ch-det", f).value.trim().slice(0, 300), ends: $("#ad-ch-end", f).value }; saveSettings(); toast("Challenge posted."); return true; },
   goal(f) { S.settings.goalHours = Math.max(0, Math.min(10000, +$("#ad-goal", f).value || 0)); saveSettings(); toast("Goal saved."); return true; },
+  "step-add"(f) {
+    const q = S.board.quests.find((x) => x.id === f.dataset.id), input = f.querySelector("input"), t = input.value.trim();
+    if (!q || !t) return;
+    q.steps = [...(q.steps || []), { id: rid(), t: t.slice(0, 160), done: false }].slice(0, 40);
+    saveBoard(); setTimeout(() => { const i = document.getElementById("sa-" + q.id); if (i) i.focus(); }, 0); return true;
+  },
   post(f) {
     const title = $("#po-title", f).value.trim(); if (!title) return;
     S.member.posts.push({ id: rid(), t: new Date().toISOString(), tag: S.ui.postTag || "chat", title: title.slice(0, 100), body: $("#po-body", f).value.trim().slice(0, 1500), link: safeUrl($("#po-link", f).value.trim()) });
@@ -1120,6 +1260,10 @@ document.addEventListener("submit", (e) => {
   if (fn && fn(f)) { f.querySelectorAll("[data-dirty]").forEach((x) => delete x.dataset.dirty); render(); }
 });
 document.addEventListener("input", (e) => { if (e.target.id) e.target.dataset.dirty = "1"; });
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  if (el.dataset.actChange === "bd-kind") { S.ui.bdKind[el.dataset.id] = el.value; delete el.dataset.dirty; render(); }
+});
 
 /* ---------- data loading ---------- */
 async function loadTable(t) {
