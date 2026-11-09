@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ship It</title>
+<meta name="description" content="A game-dev focus guild: scope projects down, work in focus runs, keep streaks, post devlogs and ship games.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23ff9d45' d='M0 5h6V0l10 8-10 8v-5H0z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Pixelify+Sans:wght@400;600;700&family=Silkscreen&display=swap">
+<style>
+/* Layout: a handheld-console shell. Sticky status bar (level, XP, streak) over tabbed screens; boards are pixel-bordered panels. */
+:root {
+  --bg: #e6e9f4; --panel: #f6f7fc; --panel-2: #dde1ef; --ink: #1d1f33; --muted: #575c80;
+  --line: #b9bfd8; --accent: #c9530c; --accent-ink: #ffffff; --cool: #0f6f7a; --cool-soft: #cfeef0;
+  --good: #2b7d3f; --bad: #b8321f; --shadow: #1d1f33; --xp: #e39b00;
+  --f-display: "Pixelify Sans", "Trebuchet MS", system-ui, sans-serif;
+  --f-label: "Silkscreen", "Courier New", ui-monospace, monospace;
+  --f-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --px: 3px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141626; --panel: #1e2137; --panel-2: #272b47; --ink: #eceefb; --muted: #a1a6c9;
+  --line: #3a3f66; --accent: #ff9d45; --accent-ink: #1b1206; --cool: #62d6de; --cool-soft: #183a44;
+  --good: #73d68c; --bad: #ff7d6e; --shadow: #06070e; --xp: #ffc23d; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #141626; --panel: #1e2137; --panel-2: #272b47; --ink: #eceefb; --muted: #a1a6c9;
+  --line: #3a3f66; --accent: #ff9d45; --accent-ink: #1b1206; --cool: #62d6de; --cool-soft: #183a44;
+  --good: #73d68c; --bad: #ff7d6e; --shadow: #06070e; --xp: #ffc23d; color-scheme: dark }
+
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--ink); }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+[hidden] { display: none !important; }
+.gate { max-width: 460px; margin: 8vh auto 40px; }
+.gate .tabs2 { display: flex; gap: 4px; }
+code, .code { font-family: var(--f-label); background: var(--panel-2); padding: 2px 6px; overflow-wrap: anywhere; }
+.err { color: var(--bad); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 700; line-height: 1.15; text-wrap: balance; margin: 0; }
+h2 { font-size: 1.5rem; } h3 { font-size: 1.15rem; }
+p { margin: 0; }
+a { color: var(--cool); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--cool); outline-offset: 2px; }
+.label { font-family: var(--f-label); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Status bar */
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--panel); border-bottom: var(--px) solid var(--line); }
+.top .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; padding-block: 10px; }
+.brand { font-family: var(--f-display); font-size: 1.6rem; font-weight: 700; letter-spacing: 0.02em; display: flex; align-items: center; gap: 8px; }
+.brand .mark { width: 22px; height: 22px; background: var(--accent); box-shadow: 3px 3px 0 var(--shadow); display: inline-block; clip-path: polygon(0 30%, 40% 30%, 40% 0, 100% 50%, 40% 100%, 40% 70%, 0 70%); }
+.me { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; flex: 1; min-width: 0; justify-content: flex-end; }
+.lvl { font-family: var(--f-label); font-size: 0.78rem; white-space: nowrap; }
+.xpbar { width: 160px; max-width: 40vw; height: 12px; background: var(--panel-2); border: 2px solid var(--line); position: relative; }
+.xpbar > i { position: absolute; inset: 0 auto 0 0; background: repeating-linear-gradient(90deg, var(--xp) 0 6px, transparent 6px 8px); }
+.streak { font-family: var(--f-label); font-size: 0.78rem; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.flame { width: 12px; height: 14px; background: var(--accent); clip-path: polygon(50% 0, 75% 30%, 100% 55%, 85% 100%, 15% 100%, 0 55%, 30% 35%); }
+.flame.off { background: var(--line); }
+nav.tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin; }
+nav.tabs a { font-family: var(--f-label); font-size: 0.78rem; text-decoration: none; color: var(--muted); padding: 7px 12px; border: 2px solid transparent; white-space: nowrap; }
+nav.tabs a:hover { color: var(--ink); border-color: var(--line); }
+nav.tabs a[aria-current="page"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.conn { font-family: var(--f-label); font-size: 0.68rem; color: var(--muted); }
+
+main { padding-block: 22px 60px; display: grid; gap: 22px; }
+
+.panel { background: var(--panel); border: var(--px) solid var(--line); padding: 18px; min-width: 0; }
+.panel.hero { box-shadow: 6px 6px 0 var(--shadow); border-color: var(--ink); }
+.stack { display: grid; gap: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.between { justify-content: space-between; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+
+.btn { font-family: var(--f-label); font-size: 0.78rem; cursor: pointer; border: 2px solid var(--ink); background: var(--panel); color: var(--ink); padding: 8px 14px; box-shadow: 3px 3px 0 var(--shadow); transition: transform .06s, box-shadow .06s; }
+.btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--shadow); }
+.btn:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--shadow); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--shadow); }
+.btn.cool { background: var(--cool); color: var(--bg); border-color: var(--shadow); }
+.btn.ghost { box-shadow: none; border-color: var(--line); }
+.btn.ghost:hover { border-color: var(--ink); transform: none; }
+.btn.small { padding: 4px 8px; font-size: 0.68rem; box-shadow: 2px 2px 0 var(--shadow); }
+.btn.danger { color: var(--bad); border-color: var(--bad); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn.on { background: var(--cool-soft); }
+
+input[type=text], input[type=url], input[type=number], input[type=date], input[type=email], input[type=password], textarea, select {
+  background: var(--bg); border: 2px solid var(--line); padding: 8px 10px; width: 100%; min-width: 0; border-radius: 0; }
+input:focus, textarea:focus, select:focus { border-color: var(--cool); outline: none; }
+textarea { resize: vertical; min-height: 70px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field.grow { flex: 1 1 220px; }
+
+.banner { border: var(--px) dashed var(--accent); padding: 12px 16px; background: var(--panel); display: grid; gap: 4px; }
+.banner.info { border-color: var(--cool); }
+.banner.warn { border-color: var(--bad); }
+
+/* Quest board */
+.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 760px) { .board { grid-template-columns: 1fr; } }
+.col { background: var(--panel-2); border: 2px solid var(--line); padding: 10px; display: grid; gap: 8px; align-content: start; min-height: 120px; }
+.col h3 { font-size: 1rem; display: flex; justify-content: space-between; align-items: baseline; }
+.quest { background: var(--panel); border: 2px solid var(--line); padding: 10px; display: grid; gap: 8px; }
+.quest.done .qt { text-decoration: line-through; color: var(--muted); }
+.qt { overflow-wrap: anywhere; }
+.chip { font-family: var(--f-label); font-size: 0.64rem; padding: 2px 6px; border: 2px solid currentColor; display: inline-block; white-space: nowrap; }
+.chip.s { color: var(--good); } .chip.m { color: var(--cool); } .chip.b { color: var(--bad); }
+.chip.core { color: var(--accent); }
+.empty { color: var(--muted); font-size: 0.9rem; padding: 8px 2px; }
+
+.meter { height: 14px; background: var(--panel-2); border: 2px solid var(--line); position: relative; }
+.meter > i { position: absolute; inset: 0 auto 0 0; background: var(--cool); }
+.meter.xp > i { background: var(--xp); }
+
+/* Wizard */
+.steps { display: flex; gap: 6px; flex-wrap: wrap; }
+.steps span { font-family: var(--f-label); font-size: 0.66rem; padding: 3px 8px; border: 2px solid var(--line); color: var(--muted); }
+.steps span.cur { border-color: var(--accent); color: var(--accent); }
+.sortlist { display: grid; gap: 8px; }
+.sortrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; background: var(--panel-2); padding: 8px 10px; border: 2px solid var(--line); }
+.sortrow .t { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.seg { display: flex; }
+.seg button { font-family: var(--f-label); font-size: 0.66rem; padding: 5px 8px; border: 2px solid var(--line); background: var(--panel); cursor: pointer; margin-left: -2px; }
+.seg button.sel.core { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); position: relative; }
+.seg button.sel.nice { background: var(--cool); color: var(--bg); border-color: var(--cool); position: relative; }
+.seg button.sel.sequel { background: var(--muted); color: var(--bg); border-color: var(--muted); position: relative; }
+
+/* Focus */
+.timer { font-family: var(--f-display); font-size: clamp(4rem, 16vw, 8.5rem); font-weight: 700; line-height: 1; text-align: center; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+.timer.running { color: var(--accent); }
+.dungeon { position: relative; height: 22px; background: var(--panel-2); border: 2px solid var(--line); overflow: hidden; }
+.dungeon > i { position: absolute; inset: 0 auto 0 0; background: repeating-linear-gradient(90deg, var(--accent) 0 10px, transparent 10px 12px); }
+.dungeon .hero-dot { position: absolute; top: 3px; width: 12px; height: 12px; background: var(--ink); transform: translateX(-6px); }
+.reward { text-align: center; display: grid; gap: 8px; justify-items: center; }
+.reward .big { font-family: var(--f-display); font-size: 2.4rem; color: var(--xp); }
+
+/* People */
+.avatar { width: 34px; height: 34px; flex: none; image-rendering: pixelated; border: 2px solid var(--line); object-fit: cover; display: inline-grid; place-items: center; font-family: var(--f-label); font-size: .8rem; color: #fff; }
+.members { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.mcard { background: var(--panel); border: var(--px) solid var(--line); padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.mcard.live { border-color: var(--accent); }
+.mhead { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.mhead .n { font-weight: 700; overflow-wrap: anywhere; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.stat { background: var(--panel-2); padding: 6px 8px; display: grid; }
+.stat b { font-family: var(--f-display); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.livedot { display: inline-block; width: 9px; height: 9px; background: var(--accent); margin-right: 6px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+.badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.badge { font-family: var(--f-label); font-size: 0.6rem; padding: 2px 6px; background: var(--panel-2); border: 2px solid var(--xp); color: var(--ink); }
+
+.feed { display: grid; gap: 10px; }
+.entry { display: grid; grid-template-columns: auto 1fr; gap: 10px; background: var(--panel); border: 2px solid var(--line); padding: 10px 12px; min-width: 0; }
+.entry .body { min-width: 0; display: grid; gap: 4px; }
+.entry .txt { overflow-wrap: anywhere; }
+.hf { font-family: var(--f-label); font-size: 0.66rem; }
+
+.ships { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.ship { background: var(--panel); border: var(--px) solid var(--ink); box-shadow: 5px 5px 0 var(--shadow); padding: 14px; display: grid; gap: 8px; min-width: 0; }
+.ship .cart { height: 70px; background: repeating-linear-gradient(45deg, var(--panel-2) 0 8px, var(--bg) 8px 16px); border: 2px solid var(--line); display: grid; place-items: center; font-family: var(--f-display); font-size: 1.3rem; color: var(--accent); text-align: center; padding: 6px; overflow-wrap: anywhere; }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--line); vertical-align: middle; }
+th { font-family: var(--f-label); font-size: 0.68rem; color: var(--muted); font-weight: 400; }
+
+details summary { cursor: pointer; font-family: var(--f-label); font-size: 0.74rem; color: var(--muted); }
+ol.howto { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; }
+
+#toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); font-family: var(--f-label); font-size: .76rem; padding: 10px 16px; box-shadow: 4px 4px 0 var(--accent); z-index: 20; max-width: calc(100vw - 32px); }
+#fx { position: fixed; inset: 0; pointer-events: none; z-index: 15; width: 100%; height: 100%; }
+@media (prefers-reduced-motion: reduce) { .livedot { animation: none; } .btn { transition: none; } }
+</style>
+</head>
+<body>
+<canvas id="fx" aria-hidden="true"></canvas>
+<div id="app"></div>
+<div id="toast" role="status" hidden></div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+(() => {
+"use strict";
+/* ---------- helpers ---------- */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pad = (n) => String(n).padStart(2, "0");
+const dstr = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const today = () => dstr(new Date());
+const addDays = (s, n) => { const [y, m, d] = s.split("-").map(Number); return dstr(new Date(y, m - 1, d + n)); };
+const month = () => today().slice(0, 7);
+const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+const clone = (o) => JSON.parse(JSON.stringify(o ?? null));
+const safeUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch { return ""; } };
+const daysLeft = (iso) => { if (!iso) return null; return Math.ceil((new Date(iso + "T23:59:59") - new Date()) / 864e5); };
+const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }); } catch { return ""; } };
+const ls = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }, del(k) { try { localStorage.removeItem(k); } catch {} } };
+
+/* ---------- game rules ---------- */
+const QUEST_XP = { s: 10, m: 25, b: 60 };
+const SIZE_NAME = { s: "Small", m: "Medium", b: "Boss" };
+const BOX = { "1w": { days: 7, core: 3, name: "1 week" }, "2w": { days: 14, core: 5, name: "2 weeks" }, "1m": { days: 30, core: 8, name: "1 month" } };
+const TITLES = [[1, "Tutorial NPC"], [2, "Button Masher"], [3, "Prototype Tinkerer"], [5, "Jam Survivor"], [7, "Bug Slayer"], [10, "Shipped Dev"], [14, "Seasoned Dev"], [20, "Legendary"]];
+const xpAt = (n) => 50 * n * (n - 1);
+const levelOf = (xp) => { let n = 1; while (xp >= xpAt(n + 1)) n++; return n; };
+const titleOf = (lv) => TITLES.filter(([l]) => lv >= l).pop()[1];
+const SHIELDS = 2;
+
+function streakOf(days) {
+  const set = new Set(days || []);
+  let d = today(), streak = 0, used = {}, pending = [];
+  if (!set.has(d)) d = addDays(d, -1);
+  for (let i = 0; i < 800; i++) {
+    if (set.has(d)) { streak++; pending.forEach((m) => (used[m] = (used[m] || 0) + 1)); pending = []; }
+    else {
+      const m = d.slice(0, 7);
+      const usedM = (used[m] || 0) + pending.filter((x) => x === m).length;
+      if (streak > 0 && usedM < SHIELDS) pending.push(m); else break;
+    }
+    d = addDays(d, -1);
+  }
+  return { streak, shieldsLeft: SHIELDS - (used[month()] || 0), doneToday: set.has(today()) };
+}
+function badgesOf(m) {
+  const b = [];
+  if (m.runs >= 1) b.push("First Run"); if (m.runs >= 10) b.push("10 Runs"); if (m.runs >= 50) b.push("50 Runs");
+  if (m.totalMinutes >= 600) b.push("10 Hours"); if (m.totalMinutes >= 3000) b.push("50 Hours");
+  if (m.bossDone >= 1) b.push("Boss Slayer"); if (m.questsDone >= 25) b.push("Questmaster");
+  const s = streakOf(m.days).streak; if (s >= 7) b.push("7-Day Streak"); if (s >= 30) b.push("30-Day Streak");
+  if ((m.ships || []).length >= 1) b.push("Shipped"); if ((m.ships || []).length >= 3) b.push("Serial Shipper");
+  return b;
+}
+const blankMember = () => ({ xp: 0, days: [], monthMinutes: {}, totalMinutes: 0, runs: 0, questsDone: 0, bossDone: 0, activeQuest: "", projectName: "", deadline: "", logs: [], ships: [], joinedAt: new Date().toISOString(), lastActive: "" });
+const normMember = (d) => Object.assign(blankMember(), d || {});
+const blankBoard = () => ({ project: null, quests: [] });
+const normBoard = (d) => Object.assign(blankBoard(), d || {});
+
+/* ---------- state ---------- */
+const CFG = window.SHIPIT_CONFIG || {};
+const S = {
+  sb: null, chan: null, uid: null, email: "", role: null, phase: "loading", needsAdmin: false,
+  gate: { tab: new URLSearchParams(location.search).get("invite") ? "join" : "signin", err: "", busy: false, info: "" },
+  conn: "ok", member: blankMember(), board: blankBoard(), members: {}, cheers: {}, profiles: {}, invites: [],
+  settings: { announcement: "", challenge: null, goalHours: 0 }, peers: [],
+  focus: null, ui: { wiz: null, reward: null, lost: null, shipOpen: false, confirmNew: false, confirmRemove: null, newInvite: null, dur: ls.get("shipit.dur") || 25, strict: ls.get("shipit.strict") ?? true },
+  sound: ls.get("shipit.sound") ?? true,
+};
+const myId = () => S.uid || "local";
+const isAdmin = () => S.role === "admin";
+const inviteFromUrl = () => (new URLSearchParams(location.search).get("invite") || "").toUpperCase();
+
+/* ---------- persistence ---------- */
+const writers = {};
+const WRITE = {
+  member: (v) => S.sb.from("members").upsert({ id: S.uid, data: v, updated_at: new Date().toISOString() }),
+  board: (v) => S.sb.from("boards").upsert({ id: S.uid, data: v, updated_at: new Date().toISOString() }),
+  cheers: (v) => S.sb.from("cheers").upsert({ id: S.uid, given: v.given, updated_at: new Date().toISOString() }),
+  settings: (v) => S.sb.from("settings").upsert({ id: 1, data: v, updated_at: new Date().toISOString() }),
+};
+function persist(key, getData) {
+  if (!S.sb || !S.uid || !S.role) return;
+  const w = writers[key] || (writers[key] = { busy: false, dirty: false });
+  w.get = getData;
+  if (w.busy) { w.dirty = true; return; }
+  w.busy = true;
+  (async () => {
+    try { do { w.dirty = false; const r = await WRITE[key](clone(w.get())); if (r.error) throw r.error; } while (w.dirty); }
+    catch (e) { console.warn(e); toast("Couldn't save just now. Your next action will try again."); }
+    finally { w.busy = false; w.dirty = false; }
+  })();
+}
+const isWriting = (k) => !!(writers[k] && (writers[k].busy || writers[k].dirty));
+const saveMember = () => { S.member.lastActive = new Date().toISOString(); syncProjectToMember(); persist("member", () => S.member); };
+const saveBoard = () => { persist("board", () => S.board); saveMember(); };
+function syncProjectToMember() {
+  const p = S.board.project;
+  S.member.projectName = p ? p.name : "";
+  S.member.deadline = p ? p.deadline : "";
+  const doing = S.board.quests.find((q) => q.status === "doing");
+  S.member.activeQuest = doing ? doing.title : "";
+}
+
+/* ---------- XP + days ---------- */
+function addXP(n, why) {
+  const before = levelOf(S.member.xp);
+  S.member.xp += n;
+  const after = levelOf(S.member.xp);
+  if (after > before) { toast(`Level up! Lv ${after} · ${titleOf(after)}`); blip("level"); burst(60); }
+  else if (why) toast(`+${n} XP · ${why}`);
+}
+function markDay() {
+  const t = today();
+  if (!S.member.days.includes(t)) { S.member.days.push(t); S.member.days.sort(); if (S.member.days.length > 400) S.member.days = S.member.days.slice(-400); }
+}
+
+/* ---------- sound + fx ---------- */
+let actx = null;
+function blip(kind) {
+  if (!S.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const notes = { quest: [523, 784], level: [523, 659, 784, 1047], run: [392, 523, 659, 784, 1047], fail: [330, 220], tap: [660] }[kind] || [600];
+    notes.forEach((f, i) => {
+      const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + i * 0.09;
+      o.type = "square"; o.frequency.value = f;
+      g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.13);
+    });
+  } catch {}
+}
+const fx = $("#fx"), fctx = fx.getContext("2d");
+let parts = [], fxRun = false;
+function burst(n = 36) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  fx.width = innerWidth; fx.height = innerHeight;
+  const cs = getComputedStyle(document.documentElement);
+  const cols = ["--accent", "--xp", "--cool", "--good"].map((v) => cs.getPropertyValue(v).trim());
+  for (let i = 0; i < n; i++) parts.push({ x: innerWidth / 2, y: innerHeight * 0.4, vx: (Math.random() - 0.5) * 14, vy: -Math.random() * 12 - 3, life: 60 + Math.random() * 30, c: cols[i % cols.length], s: 4 + ((Math.random() * 3) | 0) * 2 });
+  if (!fxRun) { fxRun = true; requestAnimationFrame(fxStep); }
+}
+function fxStep() {
+  fctx.clearRect(0, 0, fx.width, fx.height);
+  parts = parts.filter((p) => p.life-- > 0);
+  parts.forEach((p) => { p.x += p.vx; p.y += p.vy; p.vy += 0.45; p.vx *= 0.98; fctx.fillStyle = p.c; fctx.fillRect(Math.round(p.x), Math.round(p.y), p.s, p.s); });
+  if (parts.length) requestAnimationFrame(fxStep); else { fxRun = false; fctx.clearRect(0, 0, fx.width, fx.height); }
+}
+let toastT;
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 3200); }
+
+/* ---------- people ---------- */
+function allMembers() {
+  const out = Object.assign({}, S.members);
+  out[myId()] = S.member;
+  return out;
+}
+const nm = (id) => (S.profiles[id] && S.profiles[id].display_name) || (id === myId() ? "You" : "Someone");
+function avatar(id) {
+  let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `<span class="avatar" style="background:hsl(${h} 55% 42%)">${esc(nm(id).slice(0, 1).toUpperCase())}</span>`;
+}
+function liveFocusers() {
+  const now = Date.now(), out = {};
+  for (const p of S.peers) {
+    const f = p.focus;
+    if (f && p.uid && typeof f.endsAt === "number" && f.endsAt > now) out[p.uid] = f;
+  }
+  if (S.focus) out[myId()] = { endsAt: S.focus.endsAt, quest: questTitle(S.focus.questId), mins: S.focus.mins };
+  return out;
+}
+
+/* ---------- routing ---------- */
+const VIEWS = ["quests", "focus", "devlog", "party", "ships", "admin"];
+const view = () => { const h = location.hash.slice(1); return VIEWS.includes(h) && (h !== "admin" || isAdmin()) ? h : "quests"; };
+addEventListener("hashchange", () => { render(); scrollTo(0, 0); });
+
+/* ---------- render ---------- */
+function render() {
+  const app = $("#app");
+  const act = document.activeElement, aid = act && act.id;
+  let sel = null; if (aid && act.selectionStart != null) { try { sel = [act.selectionStart, act.selectionEnd]; } catch {} }
+  const kept = {};
+  app.querySelectorAll("[id][data-dirty]").forEach((el) => (kept[el.id] = el.type === "checkbox" ? el.checked : el.value));
+
+  const v = view();
+  if (S.phase !== "app") app.innerHTML = gateView();
+  else app.innerHTML = header(v) + `<main class="wrap">${notices()}${({ quests: vQuests, focus: vFocus, devlog: vDevlog, party: vParty, ships: vShips, admin: vAdmin }[v])()}</main>`;
+
+  for (const id in kept) { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = kept[id]; else el.value = kept[id]; el.dataset.dirty = "1"; } }
+  if (aid) { const el = document.getElementById(aid); if (el) { el.focus({ preventScroll: true }); if (sel) try { el.setSelectionRange(sel[0], sel[1]); } catch {} } }
+  tick();
+}
+
+/* ---------- sign-in gate ---------- */
+function gateView() {
+  const g = S.gate;
+  const shell = (inner) => `<main class="wrap"><div class="gate stack"><div class="brand" style="justify-content:center"><span class="mark" aria-hidden="true"></span>Ship It</div><section class="panel hero stack">${inner}</section></div></main>`;
+  if (S.phase === "loading") return shell(`<p class="label" style="text-align:center">Loading…</p>`);
+  if (S.phase === "unconfigured") return shell(`<span class="label">Setup needed</span><h2>Connect a database</h2>
+    <p>This copy of Ship It isn't connected to Supabase yet. Fill in <code>config.js</code> with your project URL and anon key, then reload. The README has the steps.</p>`);
+  const err = g.err ? `<p class="err" role="alert">${esc(g.err)}</p>` : "";
+  const info = g.info ? `<p role="status" style="color:var(--good)">${esc(g.info)}</p>` : "";
+  if (S.phase === "redeem") return shell(`<span class="label">Signed in as ${esc(S.email)}</span>
+    <h2>${S.needsAdmin ? "Claim admin" : "Enter your invite"}</h2>
+    ${S.needsAdmin ? `<p>Nobody runs this guild yet. You'll be the admin, and you can invite friends after.</p>` : `<p>Ship It is invite-only. Paste the code from your invite link.</p>`}
+    <form class="stack" data-form="redeem">
+      <label class="field"><span class="label">Display name</span><input type="text" id="g-name" maxlength="40" required autocomplete="nickname"></label>
+      ${S.needsAdmin ? "" : `<label class="field"><span class="label">Invite code</span><input type="text" id="g-code" maxlength="20" required value="${esc(inviteFromUrl())}" style="text-transform:uppercase"></label>`}
+      ${err}<div class="row"><button class="btn primary" type="submit" ${g.busy ? "disabled" : ""}>${S.needsAdmin ? "Become admin" : "Join the guild"}</button><button class="btn ghost" type="button" data-act="signout">Sign out</button></div>
+    </form>`);
+  const join = g.tab === "join";
+  return shell(`<div class="tabs2" role="tablist"><button class="btn ${join ? "ghost" : "on"}" data-act="gate-tab" data-t="signin" aria-pressed="${!join}">Sign in</button><button class="btn ${join ? "on" : "ghost"}" data-act="gate-tab" data-t="join" aria-pressed="${join}">Join</button></div>
+    ${join ? `<h2>Join the guild</h2>${S.needsAdmin ? `<p class="muted">No admin yet. The first person to join becomes admin and needs no code.</p>` : `<p class="muted">You need an invite code from the admin.</p>`}` : `<h2>Welcome back</h2>`}
+    <form class="stack" data-form="${join ? "join" : "signin"}">
+      ${join ? `<label class="field"><span class="label">Display name</span><input type="text" id="g-name" maxlength="40" required autocomplete="nickname"></label>` : ""}
+      <label class="field"><span class="label">Email</span><input type="email" id="g-email" required autocomplete="email"></label>
+      <label class="field"><span class="label">Password</span><input type="password" id="g-pass" required minlength="6" autocomplete="${join ? "new-password" : "current-password"}"></label>
+      ${join && !S.needsAdmin ? `<label class="field"><span class="label">Invite code</span><input type="text" id="g-code" maxlength="20" required value="${esc(inviteFromUrl())}" style="text-transform:uppercase"></label>` : ""}
+      ${err}${info}<button class="btn primary" type="submit" ${g.busy ? "disabled" : ""}>${join ? "Create account" : "Sign in"}</button>
+    </form>`);
+}
+
+function header(v) {
+  const lv = levelOf(S.member.xp), cur = xpAt(lv), nxt = xpAt(lv + 1);
+  const pct = Math.min(100, ((S.member.xp - cur) / (nxt - cur)) * 100);
+  const st = streakOf(S.member.days);
+  const tabs = [["quests", "Quests"], ["focus", S.focus ? "Focus ●" : "Focus"], ["devlog", "Devlog"], ["party", "Party"], ["ships", "Ship Wall"]];
+  if (isAdmin()) tabs.push(["admin", "Admin"]);
+  const connTxt = { ok: "", slow: "Live updates paused, reconnecting…" }[S.conn];
+  return `<header class="top"><div class="wrap">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>Ship It</div>
+    <div class="me">
+      ${connTxt ? `<span class="conn">${esc(connTxt)}</span>` : ""}
+      <span class="lvl num">Lv ${lv} · ${esc(titleOf(lv))}</span>
+      <span class="xpbar" title="${S.member.xp - cur} / ${nxt - cur} XP to Lv ${lv + 1}" role="img" aria-label="${Math.round(pct)}% to next level"><i style="width:${pct}%"></i></span>
+      <span class="streak num" title="${st.shieldsLeft} streak shields left this month"><span class="flame ${st.doneToday ? "" : "off"}"></span>${st.streak} day${st.streak === 1 ? "" : "s"}</span>
+      <button class="btn ghost small" data-act="sound" aria-pressed="${S.sound}">${S.sound ? "Sound on" : "Sound off"}</button>
+      <button class="btn ghost small" data-act="signout" title="Signed in as ${esc(S.email)}">Sign out</button>
+    </div>
+  </div>
+  <div class="wrap"><nav class="tabs" aria-label="Sections">${tabs.map(([k, t]) => `<a href="#${k}" ${k === v ? 'aria-current="page"' : ""}>${esc(t)}</a>`).join("")}</nav></div>
+  </header>`;
+}
+
+function notices() {
+  let h = "";
+  const s = S.settings;
+  if (s.announcement) h += `<div class="banner"><span class="label">Announcement</span><p>${esc(s.announcement)}</p></div>`;
+  if (s.challenge && s.challenge.title) {
+    const dl = daysLeft(s.challenge.ends);
+    h += `<div class="banner info"><span class="label">Group challenge${dl != null ? ` · ${dl > 0 ? dl + " days left" : dl === 0 ? "ends today" : "ended"}` : ""}</span><h3>${esc(s.challenge.title)}</h3>${s.challenge.details ? `<p>${esc(s.challenge.details)}</p>` : ""}</div>`;
+  }
+  return h;
+}
+
+/* ---------- Quests view ---------- */
+const questTitle = (id) => { const q = S.board.quests.find((x) => x.id === id); return q ? q.title : ""; };
+function vQuests() {
+  if (S.ui.wiz) return vWizard();
+  const p = S.board.project;
+  if (!p) {
+    return `<section class="panel hero stack">
+      <span class="label">No project yet</span>
+      <h2>Every finished game started as a small one.</h2>
+      <p class="muted">Scope Slayer asks a few blunt questions, then sorts your feature list into what ships now, what can wait and what goes in the sequel. You leave with a quest board you can actually finish.</p>
+      <div class="row"><button class="btn primary" data-act="wiz-start">Start with Scope Slayer</button></div>
+    </section>${looseQuests()}`;
+  }
+  const qs = S.board.quests, core = qs.filter((q) => q.core), coreDone = core.filter((q) => q.status === "done").length;
+  const pct = core.length ? (coreDone / core.length) * 100 : 0;
+  const dl = daysLeft(p.deadline);
+  const doing = qs.filter((q) => q.status === "doing").length;
+  return `
+  <section class="panel hero stack">
+    <div class="row between"><span class="label">Current project · ${esc(BOX[p.box]?.name || "")} time box</span>
+      <span class="label num" style="color:${dl != null && dl < 0 ? "var(--bad)" : "var(--muted)"}">${dl == null ? "" : dl > 0 ? dl + " days left" : dl === 0 ? "Due today" : Math.abs(dl) + " days over"}</span></div>
+    <h2>${esc(p.name)}</h2>
+    ${p.pitch ? `<p>${esc(p.pitch)}</p>` : ""}
+    ${p.mech ? `<p class="muted"><span class="label">Core mechanic</span> ${esc(p.mech)}</p>` : ""}
+    <div class="stack" style="gap:4px"><div class="row between"><span class="label">Core quests</span><span class="label num">${coreDone} / ${core.length}</span></div><div class="meter"><i style="width:${pct}%"></i></div></div>
+    <div class="row">
+      <button class="btn primary" data-act="ship-open">Ship it</button>
+      ${S.ui.confirmNew ? `<span class="muted">Drop this project and its quests?</span><button class="btn danger small" data-act="proj-new-yes">Yes, drop it</button><button class="btn ghost small" data-act="proj-new-no">Keep it</button>` : `<button class="btn ghost" data-act="proj-new">New project</button>`}
+    </div>
+    ${S.ui.shipOpen ? shipForm(p) : ""}
+  </section>
+  <section class="stack">
+    <form class="panel row" data-form="add-quest" style="align-items:end">
+      <label class="field grow"><span class="label">New quest (under 2 hours of work)</span><input type="text" id="aq-title" maxlength="120" placeholder="e.g. Player can wall-jump" required></label>
+      <label class="field"><span class="label">Size</span><select id="aq-size"><option value="s">Small · 10 XP</option><option value="m" selected>Medium · 25 XP</option><option value="b">Boss · 60 XP</option></select></label>
+      <button class="btn cool" type="submit">Add quest</button>
+    </form>
+    <div class="board">
+      ${col("todo", "Available", qs)}
+      ${col("doing", `In progress <span class="label num" style="color:${doing >= 3 ? "var(--accent)" : "var(--muted)"}">${doing}/3</span>`, qs)}
+      ${col("done", "Done", qs)}
+    </div>
+  </section>
+  <section class="grid2">
+    <div class="panel stack"><h3>Nice-to-have</h3><p class="muted">Promote one only when every core quest is done.</p>
+      ${(p.nice || []).length ? `<div class="stack" style="gap:6px">${p.nice.map((t, i) => `<div class="sortrow"><span class="t">${esc(t)}</span><span class="row" style="gap:6px"><button class="btn small" data-act="nice-promote" data-i="${i}">Make quest</button><button class="btn ghost small" data-act="nice-del" data-i="${i}" aria-label="Remove">✕</button></span></div>`).join("")}</div>` : `<p class="empty">Nothing here. Good.</p>`}
+    </div>
+    <div class="panel stack"><h3>Sequel vault</h3><p class="muted">Ideas live here so they stop pulling at this project.</p>
+      ${(p.sequel || []).length ? `<div class="stack" style="gap:6px">${p.sequel.map((t, i) => `<div class="sortrow"><span class="t">${esc(t)}</span><button class="btn ghost small" data-act="sequel-del" data-i="${i}" aria-label="Remove">✕</button></div>`).join("")}</div>` : `<p class="empty">Empty for now.</p>`}
+      <form class="row" data-form="sequel-add"><input type="text" id="sq-add" maxlength="120" placeholder="Park a new idea" style="flex:1 1 180px"><button class="btn small" type="submit">Park it</button></form>
+    </div>
+  </section>`;
+}
+function looseQuests() {
+  if (!S.board.quests.length) return "";
+  return `<section class="board">${col("todo", "Available", S.board.quests)}${col("doing", "In progress", S.board.quests)}${col("done", "Done", S.board.quests)}</section>`;
+}
+function col(status, title, qs) {
+  const list = qs.filter((q) => q.status === status);
+  if (status === "done") list.sort((a, b) => (b.doneAt || "").localeCompare(a.doneAt || ""));
+  const empty = { todo: "No quests waiting. Add one above.", doing: "Pick up to 3 quests to work on.", done: "Finished quests land here." }[status];
+  return `<div class="col"><h3>${title}</h3>${list.length ? list.map(questCard).join("") : `<p class="empty">${empty}</p>`}</div>`;
+}
+function questCard(q) {
+  const acts = {
+    todo: `<button class="btn small" data-act="q-move" data-id="${q.id}" data-to="doing">Start</button>`,
+    doing: `<button class="btn small primary" data-act="q-move" data-id="${q.id}" data-to="done">Done</button><button class="btn small cool" data-act="q-focus" data-id="${q.id}">Focus run</button><button class="btn ghost small" data-act="q-move" data-id="${q.id}" data-to="todo">Back</button>`,
+    done: `<span class="label">+${QUEST_XP[q.size]} XP${q.doneAt ? " · " + esc(fmtDate(q.doneAt)) : ""}</span>`,
+  }[q.status];
+  return `<div class="quest ${q.status}"><div class="row" style="gap:6px"><span class="chip ${q.size}">${SIZE_NAME[q.size]}</span>${q.core ? `<span class="chip core">Core</span>` : ""}</div>
+    <div class="qt">${esc(q.title)}</div>
+    <div class="row between" style="gap:6px"><span class="row" style="gap:6px">${acts}</span>${q.status !== "done" ? `<button class="btn ghost small" data-act="q-del" data-id="${q.id}" aria-label="Delete quest">✕</button>` : ""}</div></div>`;
+}
+function shipForm(p) {
+  return `<form class="stack" data-form="ship" style="border-top:2px dashed var(--line);padding-top:12px">
+    <p>Shipping puts <b>${esc(p.name)}</b> on the Ship Wall, gives you 200 XP and clears the board for your next game. Unfinished quests are dropped.</p>
+    <div class="row" style="align-items:end">
+      <label class="field grow"><span class="label">Game title</span><input type="text" id="sh-title" maxlength="80" value="${esc(p.name)}" required></label>
+      <label class="field grow"><span class="label">Link (itch.io etc., optional)</span><input type="url" id="sh-link" maxlength="300" placeholder="https://you.itch.io/game"></label>
+    </div>
+    <div class="row"><button class="btn primary" type="submit">Ship it</button><button class="btn ghost" type="button" data-act="ship-cancel">Not yet</button></div>
+  </form>`;
+}
+
+/* Scope Slayer wizard */
+function vWizard() {
+  const w = S.ui.wiz;
+  const names = ["The pitch", "Feature dump", "Sort", "Confirm"];
+  const steps = `<div class="steps">${names.map((n, i) => `<span class="${i === w.step ? "cur" : ""}">${i + 1}. ${n}</span>`).join("")}</div>`;
+  let body = "";
+  if (w.step === 0) body = `<form class="stack" data-form="wiz-0">
+      <label class="field"><span class="label">Working title</span><input type="text" id="wz-name" maxlength="60" value="${esc(w.name)}" placeholder="e.g. Lantern Diver" required></label>
+      <label class="field"><span class="label">Pitch it in one sentence</span><input type="text" id="wz-pitch" maxlength="160" value="${esc(w.pitch)}" placeholder="A diver explores a flooded mine with a lantern that runs out." required></label>
+      <label class="field"><span class="label">The ONE thing the player does most</span><input type="text" id="wz-mech" maxlength="100" value="${esc(w.mech)}" placeholder="Swim and manage light" required></label>
+      <div class="field"><span class="label">Time box. Can you finish it in…</span><div class="row">${Object.entries(BOX).map(([k, b]) => `<label class="row" style="gap:6px"><input type="radio" name="wz-box" value="${k}" ${w.box === k ? "checked" : ""}> ${b.name}</label>`).join("")}</div>
+      <p class="muted">Pick the shortest one that feels scary but possible. Most first games should be 1–2 weeks.</p></div>
+      <div class="row"><button class="btn primary" type="submit">Next</button><button class="btn ghost" type="button" data-act="wiz-cancel">Cancel</button></div></form>`;
+  if (w.step === 1) body = `<form class="stack" data-form="wiz-1">
+      <p>List every feature you're imagining, one per line. Dump it all; you'll cut next.</p>
+      <label class="field"><span class="label">Features</span><textarea id="wz-feat" rows="9" placeholder="Swimming movement&#10;Lantern fuel meter&#10;3 levels&#10;Main menu&#10;Online leaderboard&#10;Crafting system&#10;Boss fight">${esc(w.features.map((f) => f.t).join("\n"))}</textarea></label>
+      <div class="row"><button class="btn primary" type="submit">Next</button><button class="btn ghost" type="button" data-act="wiz-back">Back</button></div></form>`;
+  if (w.step === 2) {
+    const lim = BOX[w.box].core, nCore = w.features.filter((f) => f.b === "core").length;
+    body = `<div class="stack">
+      <p>Sort each one. <b>Core</b> means the game doesn't work without it. With a ${BOX[w.box].name} time box, aim for <b>${lim} or fewer</b> core features.</p>
+      ${nCore > lim ? `<div class="banner warn"><span class="label">Scope alert</span><p>${nCore} core features for ${BOX[w.box].name}. Move ${nCore - lim} to Nice-to-have or Sequel, or you'll stall halfway.</p></div>` : `<p class="label num" style="color:var(--good)">${nCore} / ${lim} core · looks shippable</p>`}
+      <div class="sortlist">${w.features.map((f, i) => `<div class="sortrow"><span class="t">${esc(f.t)}</span><span class="seg" role="group" aria-label="Bucket for ${esc(f.t)}">${["core", "nice", "sequel"].map((b) => `<button type="button" class="${b} ${f.b === b ? "sel" : ""}" aria-pressed="${f.b === b}" data-act="wiz-bucket" data-i="${i}" data-b="${b}">${{ core: "Core", nice: "Nice", sequel: "Sequel" }[b]}</button>`).join("")}</span></div>`).join("")}</div>
+      <div class="row"><button class="btn primary" data-act="wiz-next2" ${nCore ? "" : "disabled"}>Next</button><button class="btn ghost" data-act="wiz-back">Back</button></div></div>`;
+  }
+  if (w.step === 3) {
+    const by = (b) => w.features.filter((f) => f.b === b).map((f) => f.t);
+    body = `<div class="stack">
+      <h3>${esc(w.name)}</h3><p>${esc(w.pitch)}</p>
+      <div class="grid2">
+        <div class="stack" style="gap:6px"><span class="label">Becomes quests (${by("core").length})</span>${by("core").map((t) => `<div class="sortrow"><span class="t">${esc(t)}</span><span class="chip core">Core</span></div>`).join("")}</div>
+        <div class="stack" style="gap:6px"><span class="label">Waits (${by("nice").length}) · Sequel vault (${by("sequel").length})</span>${by("nice").map((t) => `<div class="sortrow"><span class="t">${esc(t)}</span><span class="chip m">Nice</span></div>`).join("")}${by("sequel").map((t) => `<div class="sortrow"><span class="t muted">${esc(t)}</span><span class="chip">Sequel</span></div>`).join("")}</div>
+      </div>
+      <p class="muted">Deadline: ${esc(fmtDate(addDays(today(), BOX[w.box].days) + "T12:00"))}. Break big core quests into smaller ones once you start.</p>
+      <div class="row"><button class="btn primary" data-act="wiz-create">Create project</button><button class="btn ghost" data-act="wiz-back">Back</button></div></div>`;
+  }
+  return `<section class="panel hero stack"><span class="label">Scope Slayer</span><h2>Cut it down until you can finish it.</h2>${steps}${body}</section>`;
+}
+
+/* ---------- Focus view ---------- */
+function vFocus() {
+  const f = S.focus, doing = S.board.quests.filter((q) => q.status === "doing");
+  const runsToday = S.member._runsToday?.date === today() ? S.member._runsToday.n : 0;
+  const minsToday = (S.member._minsToday?.date === today() && S.member._minsToday.n) || 0;
+  let main;
+  if (S.ui.reward) {
+    const r = S.ui.reward;
+    main = `<div class="reward"><span class="label">Run complete</span><div class="big num">+${r.xp} XP</div><p>${r.mins} focused minutes${r.quest ? ` on <b>${esc(r.quest)}</b>` : ""}. The day counts toward your streak.</p>
+      <div class="row">${r.questId && S.board.quests.find((q) => q.id === r.questId && q.status === "doing") ? `<button class="btn primary" data-act="q-move" data-id="${r.questId}" data-to="done">Mark quest done</button>` : ""}<button class="btn" data-act="f-dismiss">Another run</button><a class="btn ghost" href="#devlog" style="text-decoration:none">Write a devlog line</a></div></div>`;
+  } else if (S.ui.lost) {
+    main = `<div class="reward"><span class="label" style="color:var(--bad)">Run lost</span><div class="big" style="color:var(--bad)">You left the dungeon</div><p>You were away for ${Math.round(S.ui.lost / 1000)} seconds. Strict mode ends a run after 15 seconds away. No XP this time.</p><button class="btn primary" data-act="f-dismiss">Try again</button></div>`;
+  } else if (f) {
+    main = `<div class="stack" style="justify-items:stretch">
+      <div class="label" style="text-align:center">${f.questId ? "Questing: " + esc(questTitle(f.questId)) : "Free run"} · ${f.mins} min${f.strict ? " · strict" : ""}</div>
+      <div class="timer running num" id="timer">--:--</div>
+      <div class="dungeon" aria-hidden="true"><i id="fbar"></i><span class="hero-dot" id="fdot"></span></div>
+      <div class="row" style="justify-content:center">${S.ui.confirmAbandon ? `<span>Abandon this run? You get no XP.</span><button class="btn danger small" data-act="f-abandon-yes">Abandon</button><button class="btn ghost small" data-act="f-abandon-no">Keep going</button>` : `<button class="btn ghost" data-act="f-abandon">Abandon run</button>`}</div>
+      <p class="muted" style="text-align:center">${f.strict ? "Stay on this tab. Leaving for more than 15 seconds ends the run." : "Relaxed mode: you can switch tabs."}</p></div>`;
+  } else {
+    main = `<form class="stack" data-form="focus-start">
+      <div class="timer num">${pad(S.ui.dur)}:00</div>
+      <div class="field"><span class="label">Run length</span><div class="row">${[10, 25, 50].map((m) => `<button type="button" class="btn ${S.ui.dur === m ? "on" : "ghost"}" data-act="f-dur" data-m="${m}" aria-pressed="${S.ui.dur === m}">${m} min${m === 10 ? " warm-up" : ""}</button>`).join("")}</div></div>
+      <label class="field"><span class="label">Quest</span><select id="f-quest"><option value="">Free run (no quest)</option>${doing.map((q) => `<option value="${q.id}" ${S.ui.focusQuest === q.id ? "selected" : ""}>${esc(q.title)}</option>`).join("")}</select>
+        ${doing.length ? "" : `<span class="muted">Start a quest on the Quests tab to tie runs to it.</span>`}</label>
+      <label class="row" style="gap:8px"><input type="checkbox" id="f-strict" ${S.ui.strict ? "checked" : ""}> Strict mode: leaving the tab for 15+ seconds ends the run</label>
+      <div class="row"><button class="btn primary" type="submit">Enter the dungeon</button></div></form>`;
+  }
+  const live = liveFocusers(), others = Object.entries(live).filter(([id]) => id !== myId());
+  return `<section class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))">
+    <div class="panel hero stack">${main}</div>
+    <div class="stack">
+      <div class="panel stack"><span class="label">Today</span><div class="stats"><div class="stat"><span class="label">Runs</span><b>${runsToday}</b></div><div class="stat"><span class="label">Minutes</span><b>${minsToday}</b></div><div class="stat"><span class="label">All-time hrs</span><b>${(S.member.totalMinutes / 60).toFixed(1)}</b></div></div>
+        <p class="muted">1 XP per focused minute. Any finished run counts as showing up today.</p></div>
+      <div class="panel stack"><span class="label">Focusing right now</span>${others.length ? others.map(([id, x]) => `<div class="row">${avatar(id)}<div><b>${esc(nm(id))}</b><div class="muted">${x.quest ? esc(String(x.quest).slice(0, 80)) : "Free run"} · <span class="num" data-ends="${x.endsAt}">${Math.max(0, Math.ceil((x.endsAt - Date.now()) / 60000))}</span> min left</div></div></div>`).join("") : `<p class="empty">Nobody else is in a run. Start one and your party will see it.</p>`}</div>
+    </div></section>`;
+}
+
+/* ---------- Devlog view ---------- */
+function vDevlog() {
+  const logs = [...S.member.logs].sort((a, b) => b.t.localeCompare(a.t));
+  const loggedToday = logs.some((l) => l.t.slice(0, 10) === today());
+  const groups = {};
+  logs.forEach((l) => (groups[l.t.slice(0, 10)] = groups[l.t.slice(0, 10)] || []).push(l));
+  return `<section class="panel hero stack">
+    <span class="label">Devlog</span><h2>What did you get done?</h2>
+    <form class="stack" data-form="log">
+      <label class="field"><span class="label">One line is enough</span><textarea id="lg-text" maxlength="280" rows="2" placeholder="Got the lantern fuel draining and the screen dims when it's low." required></textarea></label>
+      <div class="row" style="align-items:end"><label class="field grow"><span class="label">Link to a clip or screenshot (optional)</span><input type="url" id="lg-link" maxlength="300" placeholder="https://"></label>
+      <button class="btn primary" type="submit">Post${loggedToday ? "" : " · +5 XP"}</button></div>
+    </form></section>
+  <section class="stack"><h3>Your timeline</h3>
+    ${logs.length ? Object.entries(groups).map(([d, ls]) => `<div class="stack" style="gap:6px"><span class="label">${esc(fmtDate(d + "T12:00"))}</span>${ls.map((l) => `<div class="entry" style="grid-template-columns:1fr auto"><div class="body"><div class="txt">${esc(l.text)}</div>${safeUrl(l.link) ? `<a href="${esc(safeUrl(l.link))}" target="_blank" rel="noopener">${esc(l.link.slice(0, 60))}</a>` : ""}</div><span class="label">${cheerCount(myId(), l.id)} high-fives</span></div>`).join("")}</div>`).join("") : `<p class="empty">Your first entry shows up here. Looking back at a month of these is the best motivation there is.</p>`}
+  </section>`;
+}
+
+/* ---------- Party view ---------- */
+const cheerKey = (author, logId) => `${author}:${logId}`;
+const cheerCount = (author, logId) => Object.values(S.cheers).filter((c) => c && c.given && c.given[cheerKey(author, logId)]).length;
+function vParty() {
+  const ms = allMembers(), live = liveFocusers(), m = month();
+  const ids = Object.keys(ms).sort((a, b) => (ms[b].xp || 0) - (ms[a].xp || 0));
+  const groupMins = ids.reduce((s, id) => s + ((ms[id].monthMinutes || {})[m] || 0), 0);
+  const goal = S.settings.goalHours || 0;
+  const feed = [];
+  ids.forEach((id) => (ms[id].logs || []).forEach((l) => feed.push({ id, l })));
+  feed.sort((a, b) => b.l.t.localeCompare(a.l.t));
+  const mine = (S.cheers[myId()] && S.cheers[myId()].given) || {};
+  return `
+  ${goal ? `<section class="panel stack"><div class="row between"><span class="label">Group goal this month</span><span class="label num">${(groupMins / 60).toFixed(1)} / ${goal} hrs</span></div><div class="meter xp"><i style="width:${Math.min(100, (groupMins / 60 / goal) * 100)}%"></i></div></section>` : ""}
+  <section class="stack"><div class="row between"><h2>Your party</h2><span class="label">${ids.length} member${ids.length === 1 ? "" : "s"} · ${Object.keys(live).length} focusing now</span></div>
+    ${ids.length <= 1 ? `<p class="muted">Just you so far. ${isAdmin() ? "Invite friends from the Admin tab." : ""}</p>` : ""}
+    <div class="members">${ids.map((id) => memberCard(id, ms[id], live[id])).join("")}</div></section>
+  <section class="stack"><h2>Devlog feed</h2>
+    ${feed.length ? `<div class="feed">${feed.slice(0, 40).map(({ id, l }) => { const k = cheerKey(id, l.id), n = cheerCount(id, l.id), on = !!mine[k];
+      return `<div class="entry">${avatar(id)}<div class="body"><div class="row between"><b>${esc(nm(id))}</b><span class="label">${esc(fmtDate(l.t))}</span></div><div class="txt">${esc(l.text)}</div>${safeUrl(l.link) ? `<a href="${esc(safeUrl(l.link))}" target="_blank" rel="noopener">${esc(l.link.slice(0, 60))}</a>` : ""}
+        <div class="row">${id !== myId() && S.uid ?`<button class="btn small ${on ? "on" : "ghost"}" data-act="cheer" data-k="${esc(k)}" aria-pressed="${on}">High-five${n ? " · " + n : ""}</button>` : `<span class="hf muted">${n} high-five${n === 1 ? "" : "s"}</span>`}</div></div></div>`; }).join("")}</div>` : `<p class="empty">No devlog posts yet. The first one sets the tone.</p>`}
+  </section>`;
+}
+function memberCard(id, m, live) {
+  m = normMember(m);
+  const lv = levelOf(m.xp), st = streakOf(m.days), dl = daysLeft(m.deadline), b = badgesOf(m);
+  return `<article class="mcard ${live ? "live" : ""}">
+    <div class="mhead">${avatar(id)}<div style="min-width:0"><div class="n">${esc(nm(id))}${id === myId() ? ` <span class="label">(you)</span>` : ""}</div><div class="label">Lv ${lv} · ${esc(titleOf(lv))}</div></div></div>
+    ${live ? `<div><span class="livedot"></span><b>In a focus run</b>${live.quest ? `: ${esc(String(live.quest).slice(0, 80))}` : ""}</div>` : ""}
+    <div class="stats"><div class="stat"><span class="label">Streak</span><b>${st.streak}</b></div><div class="stat"><span class="label">Hrs/mo</span><b>${(((m.monthMinutes || {})[month()] || 0) / 60).toFixed(1)}</b></div><div class="stat"><span class="label">Shipped</span><b>${m.ships.length}</b></div></div>
+    ${m.projectName ? `<div><span class="label">Building</span> <b>${esc(m.projectName)}</b>${dl != null ? ` <span class="muted">· ${dl >= 0 ? dl + "d left" : Math.abs(dl) + "d over"}</span>` : ""}</div>` : ""}
+    ${m.activeQuest ? `<div class="muted"><span class="label">Quest</span> ${esc(m.activeQuest)}</div>` : ""}
+    ${b.length ? `<div class="badges">${b.map((x) => `<span class="badge">${esc(x)}</span>`).join("")}</div>` : ""}
+  </article>`;
+}
+
+/* ---------- Ship wall ---------- */
+function vShips() {
+  const ms = allMembers(), all = [];
+  Object.entries(ms).forEach(([id, m]) => (m.ships || []).forEach((s) => all.push({ id, s })));
+  all.sort((a, b) => b.s.date.localeCompare(a.s.date));
+  return `<section class="stack"><span class="label">Ship Wall</span><h2>Games that got finished.</h2><p class="muted">Starting is easy. These made it out the door.</p></section>
+  ${all.length ? `<section class="ships">${all.map(({ id, s }) => `<article class="ship"><div class="cart">${esc(s.title)}</div><div class="row">${avatar(id)}<div><b>${esc(nm(id))}</b><div class="label">${esc(fmtDate(s.date))}</div></div></div>${safeUrl(s.link) ? `<a class="btn cool small" style="text-decoration:none;justify-self:start" href="${esc(safeUrl(s.link))}" target="_blank" rel="noopener">Play it</a>` : ""}</article>`).join("")}</section>`
+  : `<section class="panel stack"><p class="empty">Nothing shipped yet. The first game on this wall gets the most high-fives. Hit <b>Ship it</b> on your project when it's playable.</p></section>`}`;
+}
+
+/* ---------- Admin ---------- */
+function vAdmin() {
+  const ms = allMembers(), m = month(), s = S.settings, c = s.challenge || {};
+  const ids = Object.keys(ms);
+  const tot = ids.reduce((a, id) => a + (ms[id].totalMinutes || 0), 0);
+  const ships = ids.reduce((a, id) => a + (ms[id].ships || []).length, 0);
+  const activeStreaks = ids.filter((id) => streakOf(ms[id].days).streak > 0).length;
+  return `
+  <section class="stack"><span class="label">Admin</span><h2>Run the guild</h2></section>
+  <section class="panel"><div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
+    <div class="stat"><span class="label">Members</span><b>${ids.length}</b></div><div class="stat"><span class="label">Focus hours</span><b>${(tot / 60).toFixed(1)}</b></div>
+    <div class="stat"><span class="label">Games shipped</span><b>${ships}</b></div><div class="stat"><span class="label">Active streaks</span><b>${activeStreaks}</b></div></div></section>
+  <section class="grid2">
+    <div class="panel stack"><h3>Invite friends</h3>
+      <form class="stack" data-form="invite">
+        <div class="row" style="align-items:end">
+          <label class="field grow"><span class="label">Who is it for? (just a note)</span><input type="text" id="inv-note" maxlength="60" placeholder="Jake"></label>
+          <label class="field"><span class="label">Expires</span><select id="inv-days"><option value="7">in 7 days</option><option value="30">in 30 days</option><option value="0">never</option></select></label>
+        </div>
+        <button class="btn primary" type="submit" style="justify-self:start">Create invite link</button>
+      </form>
+      <p class="muted">Each link works once. Send it to your friend however you like.</p>
+      ${S.invites.length ? `<div class="stack" style="gap:8px">${S.invites.map(invRow).join("")}</div>` : `<p class="empty">No invites yet.</p>`}
+    </div>
+    <form class="panel stack" data-form="announce"><h3>Announcement</h3><label class="field"><span class="label">Shown at the top for everyone</span><textarea id="ad-ann" maxlength="300" rows="3" placeholder="Jam starts Friday at 6pm!">${esc(s.announcement)}</textarea></label>
+      <div class="row"><button class="btn primary" type="submit">Post</button>${s.announcement ? `<button class="btn ghost" type="button" data-act="ann-clear">Clear</button>` : ""}</div></form>
+    <form class="panel stack" data-form="challenge"><h3>Group challenge</h3>
+      <label class="field"><span class="label">Title</span><input type="text" id="ad-ch-title" maxlength="80" value="${esc(c.title)}" placeholder="Mini jam: Only one button" required></label>
+      <label class="field"><span class="label">Details</span><textarea id="ad-ch-det" maxlength="300" rows="2" placeholder="Make a game that uses a single input. 48 hours.">${esc(c.details)}</textarea></label>
+      <label class="field"><span class="label">Ends</span><input type="date" id="ad-ch-end" value="${esc(c.ends)}"></label>
+      <div class="row"><button class="btn primary" type="submit">Post challenge</button>${c.title ? `<button class="btn ghost" type="button" data-act="ch-clear">End challenge</button>` : ""}</div></form>
+    <form class="panel stack" data-form="goal"><h3>Monthly group goal</h3><label class="field"><span class="label">Focus hours for the whole party</span><input type="number" id="ad-goal" min="0" max="10000" value="${s.goalHours || ""}" placeholder="50"></label>
+      <p class="muted">Shown on the Party tab with everyone's progress this month. Set 0 to hide it.</p><div class="row"><button class="btn primary" type="submit">Save goal</button></div></form>
+  </section>
+  <section class="panel stack"><h3>Members</h3><div class="tablewrap"><table><thead><tr><th>Member</th><th>Role</th><th>Level</th><th>Streak</th><th>Hrs this month</th><th>Shipped</th><th>Last active</th><th></th></tr></thead><tbody>
+    ${ids.map((id) => { const x = normMember(ms[id]), role = (S.profiles[id] || {}).role || "member"; return `<tr><td><span class="row" style="flex-wrap:nowrap">${avatar(id)}${esc(nm(id))}</span></td><td>${role === "admin" ? `<span class="chip core">Admin</span>` : `<span class="label">Member</span>`}</td><td class="num">${levelOf(x.xp)}</td><td class="num">${streakOf(x.days).streak}</td><td class="num">${(((x.monthMinutes || {})[m] || 0) / 60).toFixed(1)}</td><td class="num">${x.ships.length}</td><td>${x.lastActive ? esc(fmtDate(x.lastActive)) : "–"}</td>
+      <td>${id === myId() ? "" : S.ui.confirmRemove === id ? `<span class="row" style="flex-wrap:nowrap;gap:6px"><button class="btn danger small" data-act="m-remove-yes" data-id="${esc(id)}">Remove for good</button><button class="btn ghost small" data-act="m-remove-no">Cancel</button></span>`
+        : `<span class="row" style="flex-wrap:nowrap;gap:6px"><button class="btn ghost small" data-act="m-role" data-id="${esc(id)}" data-role="${role === "admin" ? "member" : "admin"}">${role === "admin" ? "Make member" : "Make admin"}</button><button class="btn ghost small danger" data-act="m-remove" data-id="${esc(id)}">Remove</button></span>`}</td></tr>`; }).join("")}
+  </tbody></table></div><p class="muted">Removing someone deletes their progress and locks them out. They'd need a new invite to come back.</p></section>
+  <form class="panel stack" data-form="rename" style="max-width:460px"><h3>Your display name</h3><label class="field"><span class="label">Shown to your party</span><input type="text" id="me-name" maxlength="40" value="${esc(nm(myId()))}" required></label><button class="btn" type="submit" style="justify-self:start">Save name</button></form>`;
+}
+function invRow(i) {
+  const used = !!i.used_by, expired = !used && i.expires_at && new Date(i.expires_at) < new Date();
+  const status = used ? `Used by ${esc(nm(i.used_by))}` : expired ? "Expired" : i.expires_at ? `Open · expires ${esc(fmtDate(i.expires_at))}` : "Open";
+  return `<div class="sortrow" style="${S.ui.newInvite === i.code ? "border-color:var(--accent)" : ""}"><div class="t stack" style="gap:4px">
+      <span><b>${esc(i.note || "Invite")}</b> <span class="label">${status}</span></span>
+      ${!used && !expired ? `<input type="text" readonly id="inv-${esc(i.code)}" value="${esc(inviteLink(i.code))}" aria-label="Invite link" style="font-size:.8rem">` : ""}</div>
+    <span class="row" style="gap:6px">${!used && !expired ? `<button class="btn small cool" data-act="inv-copy" data-code="${esc(i.code)}">Copy link</button>` : ""}<button class="btn ghost small" data-act="inv-del" data-code="${esc(i.code)}">${used ? "Clear" : "Cancel"}</button></span></div>`;
+}
+
+/* ---------- focus timer ---------- */
+function saveFocus() { if (S.focus) ls.set("shipit.focus", S.focus); else ls.del("shipit.focus"); }
+function setPresence() {
+  if (!S.chan || !S.chanReady) return;
+  S.chan.track({ uid: S.uid, focus: S.focus ? { endsAt: S.focus.endsAt, quest: questTitle(S.focus.questId).slice(0, 120), mins: S.focus.mins } : null }).catch(() => {});
+}
+function startRun(mins, questId, strict) {
+  const now = Date.now();
+  S.focus = { startedAt: now, endsAt: now + mins * 60000, mins, questId, strict, hiddenAt: null, lastSeen: now };
+  S.ui.reward = null; S.ui.lost = null; S.ui.confirmAbandon = false;
+  saveFocus(); setPresence(); blip("tap");
+  try { navigator.wakeLock && navigator.wakeLock.request("screen").catch(() => {}); } catch {}
+  render();
+}
+function endRun() { S.focus = null; saveFocus(); setPresence(); }
+function failRun(away) { endRun(); S.ui.lost = away; blip("fail"); render(); }
+function completeRun() {
+  const f = S.focus; endRun();
+  const mins = f.mins, m = S.member;
+  m.totalMinutes += mins; m.runs += 1;
+  m.monthMinutes[month()] = (m.monthMinutes[month()] || 0) + mins;
+  m._runsToday = { date: today(), n: (m._runsToday?.date === today() ? m._runsToday.n : 0) + 1 };
+  m._minsToday = { date: today(), n: (m._minsToday?.date === today() ? m._minsToday.n : 0) + mins };
+  markDay();
+  S.ui.reward = { xp: mins, mins, quest: questTitle(f.questId), questId: f.questId };
+  addXP(mins); blip("run"); burst(70);
+  saveMember(); render();
+}
+function tick() {
+  const f = S.focus;
+  if (f) {
+    const now = Date.now();
+    if (!document.hidden) { f.lastSeen = now; }
+    if (now >= f.endsAt && !document.hidden) { completeRun(); return; }
+    const left = Math.max(0, f.endsAt - now), mm = Math.floor(left / 60000), ss = Math.floor((left % 60000) / 1000);
+    const t = $("#timer"); if (t) t.textContent = pad(mm) + ":" + pad(ss);
+    const p = Math.min(100, ((now - f.startedAt) / (f.endsAt - f.startedAt)) * 100);
+    const bar = $("#fbar"), dot = $("#fdot"); if (bar) bar.style.width = p + "%"; if (dot) dot.style.left = p + "%";
+  }
+  document.querySelectorAll("[data-ends]").forEach((el) => (el.textContent = Math.max(0, Math.ceil((+el.dataset.ends - Date.now()) / 60000))));
+}
+setInterval(() => { tick(); if (S.focus && Date.now() - (S._lastFocusSave || 0) > 5000) { S._lastFocusSave = Date.now(); saveFocus(); } }, 250);
+document.addEventListener("visibilitychange", () => {
+  const f = S.focus; if (!f) return;
+  if (document.hidden) { f.hiddenAt = Date.now(); saveFocus(); return; }
+  if (f.hiddenAt) {
+    const away = Math.min(Date.now(), f.endsAt) - f.hiddenAt; f.hiddenAt = null;
+    if (f.strict && away > 15000) { failRun(away); return; }
+  }
+  saveFocus(); tick();
+});
+(function restoreFocus() {
+  const f = ls.get("shipit.focus");
+  if (!f || typeof f.endsAt !== "number") return;
+  const now = Date.now(), gap = Math.min(now, f.endsAt) - (f.lastSeen || f.startedAt);
+  if (f.strict && gap > 15000) { ls.del("shipit.focus"); S.ui.lost = gap; return; }
+  S.focus = f; f.hiddenAt = null;
+})();
+
+/* ---------- actions ---------- */
+function moveQuest(id, to) {
+  const q = S.board.quests.find((x) => x.id === id); if (!q) return;
+  if (to === "doing" && q.status !== "doing" && S.board.quests.filter((x) => x.status === "doing").length >= 3) { toast("3 quests in progress already. Finish one first."); blip("fail"); return; }
+  if (to === "done" && q.status !== "done") {
+    q.doneAt = new Date().toISOString(); S.member.questsDone++; if (q.size === "b") S.member.bossDone++;
+    markDay(); addXP(QUEST_XP[q.size], "Quest complete"); blip("quest"); burst(q.size === "b" ? 80 : 30);
+    if (S.ui.reward && S.ui.reward.questId === id) S.ui.reward.questId = null;
+  }
+  q.status = to; saveBoard(); render();
+}
+const ACT = {
+  sound() { S.sound = !S.sound; ls.set("shipit.sound", S.sound); render(); blip("tap"); },
+  "wiz-start"() { S.ui.wiz = { step: 0, name: "", pitch: "", mech: "", box: "2w", features: [] }; render(); },
+  "wiz-cancel"() { S.ui.wiz = null; render(); },
+  "wiz-back"() { S.ui.wiz.step = Math.max(0, S.ui.wiz.step - 1); render(); },
+  "wiz-bucket"(el) { S.ui.wiz.features[+el.dataset.i].b = el.dataset.b; render(); },
+  "wiz-next2"() { S.ui.wiz.step = 3; render(); },
+  "wiz-create"() {
+    const w = S.ui.wiz, by = (b) => w.features.filter((f) => f.b === b).map((f) => f.t);
+    S.board.project = { name: w.name, pitch: w.pitch, mech: w.mech, box: w.box, created: new Date().toISOString(), deadline: addDays(today(), BOX[w.box].days), nice: by("nice"), sequel: by("sequel") };
+    S.board.quests = by("core").map((t) => ({ id: rid(), title: t, size: "m", status: "todo", core: true }));
+    S.ui.wiz = null; saveBoard(); blip("level"); burst(50); toast("Project created. Start your first quest."); render();
+  },
+  "q-move"(el) { moveQuest(el.dataset.id, el.dataset.to); },
+  "q-del"(el) { S.board.quests = S.board.quests.filter((q) => q.id !== el.dataset.id); saveBoard(); render(); },
+  "q-focus"(el) { S.ui.focusQuest = el.dataset.id; S.ui.reward = null; S.ui.lost = null; location.hash = "focus"; },
+  "nice-promote"(el) { const p = S.board.project, t = p.nice.splice(+el.dataset.i, 1)[0]; S.board.quests.push({ id: rid(), title: t, size: "m", status: "todo", core: false }); saveBoard(); render(); },
+  "nice-del"(el) { S.board.project.nice.splice(+el.dataset.i, 1); saveBoard(); render(); },
+  "sequel-del"(el) { S.board.project.sequel.splice(+el.dataset.i, 1); saveBoard(); render(); },
+  "ship-open"() { S.ui.shipOpen = true; render(); },
+  "ship-cancel"() { S.ui.shipOpen = false; render(); },
+  "proj-new"() { S.ui.confirmNew = true; render(); },
+  "proj-new-no"() { S.ui.confirmNew = false; render(); },
+  "proj-new-yes"() { S.ui.confirmNew = false; S.board = blankBoard(); saveBoard(); ACT["wiz-start"](); },
+  "f-dur"(el) { S.ui.dur = +el.dataset.m; ls.set("shipit.dur", S.ui.dur); render(); },
+  "f-abandon"() { S.ui.confirmAbandon = true; render(); },
+  "f-abandon-no"() { S.ui.confirmAbandon = false; render(); },
+  "f-abandon-yes"() { S.ui.confirmAbandon = false; endRun(); render(); },
+  "f-dismiss"() { S.ui.reward = null; S.ui.lost = null; render(); },
+  cheer(el) {
+    const k = el.dataset.k, me = S.cheers[myId()] || { given: {} }; const given = Object.assign({}, me.given);
+    if (given[k]) delete given[k]; else { given[k] = 1; blip("tap"); }
+    S.cheers[myId()] = { given }; persist("cheers", () => S.cheers[myId()]); render();
+  },
+  "ann-clear"() { S.settings.announcement = ""; saveSettings(); render(); },
+  "ch-clear"() { S.settings.challenge = null; saveSettings(); render(); },
+  "m-remove"(el) { S.ui.confirmRemove = el.dataset.id; render(); },
+  "m-remove-no"() { S.ui.confirmRemove = null; render(); },
+  async "m-remove-yes"(el) {
+    const id = el.dataset.id; S.ui.confirmRemove = null;
+    const r = await S.sb.from("profiles").delete().eq("id", id);
+    toast(r.error ? "Couldn't remove them. Try again." : "Removed. They can no longer get in.");
+    await loadTable("profiles"); await loadTable("members"); render();
+  },
+  async "m-role"(el) {
+    const r = await S.sb.from("profiles").update({ role: el.dataset.role }).eq("id", el.dataset.id);
+    toast(r.error ? "Couldn't change their role." : el.dataset.role === "admin" ? "They're an admin now." : "They're a member now.");
+    await loadTable("profiles"); render();
+  },
+  async "inv-del"(el) {
+    const r = await S.sb.from("invites").delete().eq("code", el.dataset.code);
+    if (r.error) toast("Couldn't cancel that invite."); if (S.ui.newInvite === el.dataset.code) S.ui.newInvite = null;
+    await loadInvites(); render();
+  },
+  "inv-copy"(el) {
+    const link = inviteLink(el.dataset.code);
+    const done = () => toast("Invite link copied.");
+    const fallback = () => { const i = document.getElementById("inv-" + el.dataset.code); if (i) { i.focus(); i.select(); } toast("Press Ctrl+C to copy."); };
+    try { navigator.clipboard.writeText(link).then(done, fallback); } catch { fallback(); }
+  },
+  "gate-tab"(el) { S.gate.tab = el.dataset.t; S.gate.err = ""; S.gate.info = ""; render(); },
+  async signout() { endRun(); await S.sb.auth.signOut(); },
+};
+const saveSettings = () => persist("settings", () => S.settings);
+const inviteLink = (code) => location.origin + location.pathname + "?invite=" + encodeURIComponent(code);
+function newCode() { const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", b = new Uint8Array(10); crypto.getRandomValues(b); return [...b].map((x) => a[x % a.length]).join(""); }
+const FORM = {
+  "add-quest"(f) {
+    const t = $("#aq-title", f).value.trim(); if (!t) return;
+    S.board.quests.push({ id: rid(), title: t, size: $("#aq-size", f).value, status: "todo", core: false }); saveBoard(); return true;
+  },
+  "sequel-add"(f) { const t = $("#sq-add", f).value.trim(); if (!t || !S.board.project) return; S.board.project.sequel.push(t); saveBoard(); toast("Parked in the sequel vault."); return true; },
+  "wiz-0"(f) {
+    const w = S.ui.wiz; w.name = $("#wz-name", f).value.trim(); w.pitch = $("#wz-pitch", f).value.trim(); w.mech = $("#wz-mech", f).value.trim();
+    w.box = (f.querySelector("input[name=wz-box]:checked") || {}).value || "2w"; w.step = 1; return true;
+  },
+  "wiz-1"(f) {
+    const w = S.ui.wiz, old = Object.fromEntries(w.features.map((x) => [x.t, x.b]));
+    const lines = [...new Set($("#wz-feat", f).value.split("\n").map((s) => s.trim()).filter(Boolean))].slice(0, 40);
+    if (!lines.length) { toast("Add at least one feature."); return; }
+    w.features = lines.map((t, i) => ({ t: t.slice(0, 120), b: old[t] || (i < BOX[w.box].core ? "core" : "nice") })); w.step = 2; return true;
+  },
+  ship(f) {
+    const title = $("#sh-title", f).value.trim(); if (!title) return;
+    const link = safeUrl($("#sh-link", f).value.trim());
+    S.member.ships.push({ id: rid(), title: title.slice(0, 80), link, date: new Date().toISOString() });
+    markDay(); S.board = blankBoard(); S.ui.shipOpen = false;
+    addXP(200, "Shipped!"); blip("level"); burst(140); saveBoard(); location.hash = "ships"; return true;
+  },
+  "focus-start"(f) { const q = $("#f-quest", f).value || null; S.ui.strict = $("#f-strict", f).checked; ls.set("shipit.strict", S.ui.strict); S.ui.focusQuest = q; startRun(S.ui.dur, q, S.ui.strict); return true; },
+  log(f) {
+    const text = $("#lg-text", f).value.trim(); if (!text) return;
+    const first = !S.member.logs.some((l) => l.t.slice(0, 10) === today());
+    S.member.logs.push({ id: rid(), t: new Date().toISOString(), text: text.slice(0, 280), link: safeUrl($("#lg-link", f).value.trim()) });
+    if (S.member.logs.length > 80) S.member.logs = S.member.logs.slice(-80);
+    markDay(); if (first) addXP(5, "Devlog posted"); else toast("Posted."); blip("quest"); saveMember(); return true;
+  },
+  announce(f) { S.settings.announcement = $("#ad-ann", f).value.trim().slice(0, 300); saveSettings(); toast("Announcement posted."); return true; },
+  challenge(f) { S.settings.challenge = { title: $("#ad-ch-title", f).value.trim().slice(0, 80), details: $("#ad-ch-det", f).value.trim().slice(0, 300), ends: $("#ad-ch-end", f).value }; saveSettings(); toast("Challenge posted."); return true; },
+  goal(f) { S.settings.goalHours = Math.max(0, Math.min(10000, +$("#ad-goal", f).value || 0)); saveSettings(); toast("Goal saved."); return true; },
+  invite(f) {
+    const code = newCode(), note = $("#inv-note", f).value.trim().slice(0, 60), days = +$("#inv-days", f).value || 0;
+    S.sb.from("invites").insert({ code, note: note || null, created_by: S.uid, expires_at: days ? new Date(Date.now() + days * 864e5).toISOString() : null })
+      .then(async (r) => { if (r.error) { toast("Couldn't create the invite."); return; } S.ui.newInvite = code; await loadInvites(); render(); });
+    return true;
+  },
+  rename(f) {
+    const n = $("#me-name", f).value.trim(); if (!n) return;
+    S.sb.rpc("set_display_name", { p_name: n }).then(async (r) => { toast(r.error ? r.error.message : "Name updated."); await loadTable("profiles"); render(); });
+    return true;
+  },
+  signin(f) { gateSubmit(async () => {
+    const r = await S.sb.auth.signInWithPassword({ email: $("#g-email", f).value.trim(), password: $("#g-pass", f).value });
+    if (r.error) throw r.error;
+  }); },
+  join(f) {
+    const name = $("#g-name", f).value.trim(), code = ($("#g-code", f) || {}).value || "";
+    ls.set("shipit.pending", { name, code: code.trim().toUpperCase() });
+    gateSubmit(async () => {
+      const r = await S.sb.auth.signUp({ email: $("#g-email", f).value.trim(), password: $("#g-pass", f).value, options: { emailRedirectTo: location.origin + location.pathname } });
+      if (r.error) throw r.error;
+      if (!r.data.session) S.gate.info = "Check your email and click the confirmation link, then sign in here.";
+    });
+  },
+  redeem(f) {
+    const name = $("#g-name", f).value.trim(), code = (($("#g-code", f) || {}).value || "").trim().toUpperCase();
+    gateSubmit(() => redeem(name, code));
+  },
+};
+async function gateSubmit(fn) {
+  S.gate.busy = true; S.gate.err = ""; S.gate.info = ""; render();
+  try { await fn(); } catch (e) { S.gate.err = (e && e.message) || "Something went wrong. Try again."; }
+  S.gate.busy = false; render();
+}
+async function redeem(name, code) {
+  const r = await S.sb.rpc("redeem_invite", { p_code: code, p_name: name });
+  if (r.error) throw r.error;
+  ls.del("shipit.pending");
+  if (inviteFromUrl()) history.replaceState(null, "", location.pathname + location.hash);
+  if (r.data === "admin") toast("You're the admin. Invite friends from the Admin tab.");
+  await enterApp();
+}
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-act]"); if (!el) return;
+  const fn = ACT[el.dataset.act]; if (fn) { e.preventDefault(); fn(el); }
+});
+document.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const f = e.target, fn = FORM[f.dataset.form];
+  if (fn && fn(f)) { f.querySelectorAll("[data-dirty]").forEach((x) => delete x.dataset.dirty); render(); }
+});
+document.addEventListener("input", (e) => { if (e.target.id) e.target.dataset.dirty = "1"; });
+
+/* ---------- data loading ---------- */
+async function loadTable(t) {
+  if (t === "profiles") {
+    const r = await S.sb.from("profiles").select("id,display_name,role");
+    if (!r.error) { S.profiles = Object.fromEntries(r.data.map((p) => [p.id, p])); S.role = S.profiles[S.uid] ? S.profiles[S.uid].role : null; }
+  } else if (t === "members") {
+    const r = await S.sb.from("members").select("id,data");
+    if (!r.error) {
+      S.members = Object.fromEntries(r.data.map((x) => [x.id, normMember(x.data)]));
+      if (S.members[S.uid] && !isWriting("member")) S.member = normMember(clone(S.members[S.uid]));
+    }
+  } else if (t === "cheers") {
+    const r = await S.sb.from("cheers").select("id,given");
+    if (!r.error) { const c = Object.fromEntries(r.data.map((x) => [x.id, { given: x.given || {} }])); if (isWriting("cheers")) c[S.uid] = S.cheers[S.uid]; S.cheers = c; }
+  } else if (t === "settings") {
+    const r = await S.sb.from("settings").select("data").eq("id", 1).maybeSingle();
+    if (!r.error && !isWriting("settings")) S.settings = Object.assign({ announcement: "", challenge: null, goalHours: 0 }, (r.data && r.data.data) || {});
+  } else if (t === "board") {
+    const r = await S.sb.from("boards").select("data").eq("id", S.uid).maybeSingle();
+    if (!r.error && r.data && !isWriting("board")) S.board = normBoard(r.data.data);
+  }
+}
+async function loadInvites() {
+  if (!isAdmin()) { S.invites = []; return; }
+  const r = await S.sb.from("invites").select("*").order("created_at", { ascending: false }).limit(50);
+  if (!r.error) S.invites = r.data;
+}
+const refetchTimers = {};
+function refetchSoon(t) {
+  clearTimeout(refetchTimers[t]);
+  refetchTimers[t] = setTimeout(async () => {
+    await loadTable(t);
+    if (t === "profiles") { if (!S.role) { await leaveApp(); return; } await loadInvites(); }
+    render();
+  }, 300);
+}
+
+/* ---------- session ---------- */
+async function enterApp() {
+  await loadTable("profiles");
+  if (!S.role) {
+    const nr = await S.sb.rpc("needs_admin"); S.needsAdmin = !!nr.data;
+    const pend = ls.get("shipit.pending");
+    if (pend && pend.name) { try { await redeem(pend.name, pend.code); return; } catch (e) { ls.del("shipit.pending"); S.gate.err = e.message; } }
+    S.phase = "redeem"; render(); return;
+  }
+  await Promise.all([loadTable("members"), loadTable("cheers"), loadTable("settings"), loadTable("board"), loadInvites()]);
+  S.phase = "app"; render();
+  subscribe();
+}
+async function leaveApp() {
+  if (S.chan) { try { await S.sb.removeChannel(S.chan); } catch {} S.chan = null; S.chanReady = false; }
+  S.role = null; S.member = blankMember(); S.board = blankBoard(); S.members = {}; S.cheers = {}; S.profiles = {}; S.invites = []; S.peers = [];
+}
+function subscribe() {
+  if (S.chan) return;
+  const ch = S.sb.channel("party", { config: { presence: { key: S.uid } } });
+  ["profiles", "members", "cheers", "settings"].forEach((t) => ch.on("postgres_changes", { event: "*", schema: "public", table: t }, () => refetchSoon(t)));
+  ch.on("presence", { event: "sync" }, () => {
+    const st = ch.presenceState();
+    S.peers = Object.values(st).map((arr) => arr[arr.length - 1]).filter(Boolean).map((p) => ({ uid: p.uid, focus: p.focus }));
+    if (S.phase === "app" && (view() === "party" || view() === "focus")) render();
+  });
+  ch.subscribe((status) => {
+    if (status === "SUBSCRIBED") {
+      S.chanReady = true; if (S.conn !== "ok") { S.conn = "ok"; ["profiles", "members", "cheers", "settings"].forEach(refetchSoon); }
+      setPresence(); render();
+    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") { S.chanReady = false; if (S.phase === "app") { S.conn = "slow"; render(); } }
+  });
+  S.chan = ch;
+}
+
+/* ---------- boot ---------- */
+render();
+(async function boot() {
+  if (!CFG.supabaseUrl || !CFG.supabaseKey || !window.supabase) { S.phase = "unconfigured"; render(); return; }
+  S.sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+  let current = null;
+  const onSession = async (session) => {
+    const uid = session ? session.user.id : null;
+    if (uid === current) return;
+    current = uid;
+    if (!uid) {
+      await leaveApp(); S.uid = null; S.email = "";
+      const nr = await S.sb.rpc("needs_admin"); S.needsAdmin = !!nr.data;
+      if (S.needsAdmin && S.gate.tab === "signin" && !S.gate.err) S.gate.tab = "join";
+      S.phase = "signin"; render(); return;
+    }
+    S.uid = uid; S.email = session.user.email || "";
+    S.phase = "loading"; render();
+    try { await enterApp(); } catch (e) { console.error(e); S.phase = "signin"; S.gate.err = "Couldn't load your data. Check that the database setup ran."; render(); }
+  };
+  S.sb.auth.onAuthStateChange((_ev, session) => { setTimeout(() => onSession(session), 0); });
+  const { data } = await S.sb.auth.getSession();
+  onSession(data.session);
+})();
+})();
+</script>
+</body>
+</html>
