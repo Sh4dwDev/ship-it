@@ -1014,7 +1014,7 @@ render();
 (async function boot() {
   if (!CFG.supabaseUrl || !CFG.supabaseKey || !window.supabase) { S.phase = "unconfigured"; render(); return; }
   S.sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
-  let current = null;
+  let current;
   const onSession = async (session) => {
     const uid = session ? session.user.id : null;
     if (uid === current) return;
